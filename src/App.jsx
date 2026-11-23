@@ -1,12 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Check,
+  Copy,
   Crown,
   DollarSign,
   ExternalLink,
   Eye,
+  Flame,
+  MapPin,
   Moon,
   RotateCcw,
   Search,
+  Share2,
   Sparkles,
   Sun,
   Trophy,
@@ -43,20 +48,16 @@ const DEMO_DONORS = [
   { plot: 19, name: "@tommy_v", amount: 15, message: "Tommy Vercetti Tower" },
   { plot: 24, name: "@marcus_gg", amount: 1, message: "From TikTok!" },
   { plot: 37, name: "@elena_art", amount: 5, message: "Night mode looks insane" },
-  { plot: 42, name: "@react_wizard", amount: 10, message: "60 FPS SVG/Canvas power" },
-  { plot: 55, name: "@dan_plays", amount: 1, message: "Good luck bro" },
-  { plot: 64, name: "@miami_86", amount: 5, message: "Vice City vibes" },
-  { plot: 73, name: "@nico_bellic", amount: 1, message: "Bowling later?" },
+  { plot: 42, name: "@react_wizard", amount: 10, message: "60 FPS Canvas power" },
+  { plot: 69, name: "@vice_legend", amount: 10, message: "Had to claim #0069" },
   { plot: 88, name: "@crypto_cat", amount: 10, message: "Penthouse view" },
   { plot: 101, name: "@student_cz", amount: 1, message: "Držím palce!" },
   { plot: 118, name: "@sofia_m", amount: 5, message: "Greetings from Spain" },
-  { plot: 130, name: "@hyper_clip", amount: 1, message: "Saw your Shorts!" },
   { plot: 145, name: "@cyber_punk", amount: 10, message: "Neon skyscraper club" },
-  { plot: 162, name: "@lucas_dev", amount: 1, message: "Clean code" },
   { plot: 180, name: "@hannah_k", amount: 5, message: "Pool party at #0180" },
-  { plot: 205, name: "@drift_king", amount: 1, message: "GTA 6 hype" },
-  { plot: 222, name: "@max_power", amount: 5, message: "Keep grinding!" },
   { plot: 250, name: "@zero_to_hero", amount: 10, message: "Quarter thousand!" },
+  { plot: 420, name: "@miami_420", amount: 5, message: "Best spot in Downtown!" },
+  { plot: 777, name: "@lucky_seven", amount: 20, message: "Jackpot skyscraper!" },
 ];
 
 const COLS = 40;
@@ -67,6 +68,26 @@ const KOFI_URL = "https://ko-fi.com/vectorbra1n";
 
 const TILE_W = 44;
 const TILE_H = 22;
+
+// Kultovní VIP čísla parcel zvýrazněná na mapě
+const VIP_PLOTS = {
+  1: { label: "Mayor's Founder Corner", short: "#0001" },
+  69: { label: "Vice Legend Spot", short: "#0069" },
+  420: { label: "High Roller Plot", short: "#0420" },
+  777: { label: "Lucky Jackpot Plot", short: "#0777" },
+  1337: { label: "Elite Coder Tower", short: "#1337" },
+  1600: { label: "Final Boss Penthouse", short: "#1600" },
+};
+
+function getDistrict(plotNum) {
+  const idx = plotNum - 1;
+  const row = Math.floor(idx / COLS);
+  const col = idx % COLS;
+  if (col < 12 && row < 12) return "Starfish Island";
+  if (col >= 15 && col <= 24 && row >= 15 && row <= 24) return "Downtown Neon";
+  if (row >= 28) return "Vice Port";
+  return "Ocean Beach";
+}
 
 function getTier(amount, isFounder) {
   if (isFounder) return "founder";
@@ -97,6 +118,13 @@ export default function App() {
   const [selectedPlot, setSelectedPlot] = useState(1);
   const [hoveredPlot, setHoveredPlot] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(true);
+
+  // Interaktivní náhled vlastního domu před platbou ("Test-build")
+  const [previewName, setPreviewName] = useState("");
+  const [previewAmount, setPreviewAmount] = useState(1);
+  const [copiedNote, setCopiedNote] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Kamera (posun a přiblížení pro ostrov 40x40)
   const [camera, setCamera] = useState({ x: 0, y: -50, zoom: 0.95 });
@@ -112,6 +140,12 @@ export default function App() {
       }
     }
     return map;
+  }, [activeDonors]);
+
+  const topBuilders = useMemo(() => {
+    return [...activeDonors]
+      .sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0))
+      .slice(0, 5);
   }, [activeDonors]);
 
   const totalRaised = useMemo(() => {
@@ -146,11 +180,21 @@ export default function App() {
     const iso = gridToIso(col, row);
     setSelectedPlot(plotNum);
     setCamera((prev) => ({
-      x: -iso.x * Math.max(prev.zoom, 1.4),
-      y: -iso.y * Math.max(prev.zoom, 1.4),
-      zoom: Math.max(prev.zoom, 1.4),
+      x: -iso.x * Math.max(prev.zoom, 1.45),
+      y: -iso.y * Math.max(prev.zoom, 1.45),
+      zoom: Math.max(prev.zoom, 1.45),
     }));
   };
+
+  // Načtení sdíleného odkazu ?plot=42 při otevření stránky
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const plotParam = parseInt(params.get("plot") || "", 10);
+    if (!Number.isNaN(plotParam) && plotParam >= 1 && plotParam <= TOTAL_PLOTS) {
+      focusPlot(plotParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Vyhledávání podle @jména nebo čísla parcely
   const handleSearch = (e) => {
@@ -170,6 +214,33 @@ export default function App() {
         return;
       }
     }
+  };
+
+  // Zkopírování přímého odkazu na konkrétní parcelu
+  const handleSharePlot = () => {
+    const url = `${window.location.origin}/?plot=${selectedPlot}`;
+    navigator.clipboard?.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  // Formátovaný text pro vložení do poznámky na Ko-fi
+  const formattedHandle = previewName.trim()
+    ? previewName.trim().startsWith("@")
+      ? previewName.trim()
+      : `@${previewName.trim()}`
+    : "@your_name";
+
+  const kofiNoteText = `${formattedHandle} - Plot #${String(selectedPlot).padStart(
+    4,
+    "0"
+  )} ($${previewAmount})`;
+
+  const handleCopyAndOpenKofi = () => {
+    navigator.clipboard?.writeText(kofiNoteText);
+    setCopiedNote(true);
+    setTimeout(() => setCopiedNote(false), 3000);
+    window.open(KOFI_URL, "_blank", "noopener,noreferrer");
   };
 
   // Vykreslení izometrického ostrova v 60 FPS
@@ -265,6 +336,7 @@ export default function App() {
           const isSelected = selectedPlot === plotNum;
           const isHovered = hoveredPlot === plotNum;
           const isPlotOne = plotNum === 1;
+          const isVip = Boolean(VIP_PLOTS[plotNum]);
 
           // Hlavní promenáda přesně uprostřed ostrova 40x40
           const isAvenue = col === 19 || col === 20 || row === 19 || row === 20;
@@ -282,6 +354,12 @@ export default function App() {
           } else if (isPlotOne) {
             const pulse = 0.55 + Math.abs(Math.sin(t * 3.5)) * 0.45;
             ctx.fillStyle = `rgba(251, 191, 36, ${pulse})`;
+          } else if (isVip) {
+            ctx.fillStyle = isNight
+              ? "rgba(236, 72, 153, 0.35)"
+              : "rgba(244, 114, 182, 0.55)";
+          } else if (isSelected) {
+            ctx.fillStyle = isNight ? "#164E63" : "#67E8F9";
           } else if (isAvenue) {
             ctx.fillStyle = isNight ? "#1E293B" : "#CBD5E1";
           } else {
@@ -301,7 +379,7 @@ export default function App() {
           ctx.stroke();
 
           // Maják pro neobsazenou Parcelu #0001 (Founder's Special)
-          if (isPlotOne && !donor) {
+          if (isPlotOne && !donor && !isSelected) {
             const beamHeight = 36 + Math.sin(t * 4) * 6;
             const beamGrad = ctx.createLinearGradient(x, y, x, y - beamHeight);
             beamGrad.addColorStop(0, "rgba(251, 191, 36, 0.85)");
@@ -313,33 +391,40 @@ export default function App() {
             ctx.font = "bold 9px sans-serif";
             ctx.textAlign = "center";
             ctx.fillText("#0001", x, y - beamHeight - 3);
+          } else if (isVip && !donor && !isSelected && camera.zoom >= 1.15) {
+            ctx.fillStyle = isNight ? "#F9A8D4" : "#831843";
+            ctx.font = "bold 8px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(VIP_PLOTS[plotNum].short, x, y - 6);
           }
 
-          // Vykreslení budovy, pokud je parcela obsazená
+          // 1) Skutečná budova obsazené parcely
           if (donor) {
             const tier = getTier(donor.amount, plotNum === 1);
-            drawBuilding(ctx, x, y, tier, isNight, t);
+            drawBuilding(ctx, x, y, tier, isNight, t, false);
 
-            // Jmenovka nad budovou při větším přiblížení nebo výběru
             if (camera.zoom >= 1.35 || isSelected || isHovered) {
-              ctx.font = "bold 9px system-ui, sans-serif";
-              const label = donor.name;
-              const tw = ctx.measureText(label).width + 10;
-              const bh = tier === "skyscraper" ? 56 : tier === "villa" || tier === "founder" ? 30 : 20;
-
-              ctx.fillStyle = "rgba(9, 13, 22, 0.88)";
-              ctx.beginPath();
-              ctx.roundRect(x - tw / 2, y - bh - 16, tw, 14, 4);
-              ctx.fill();
-
-              ctx.strokeStyle = isSelected ? "#FBBF24" : "#38BDF8";
-              ctx.lineWidth = 1;
-              ctx.stroke();
-
-              ctx.fillStyle = "#F8FAFC";
-              ctx.textAlign = "center";
-              ctx.fillText(label, x, y - bh - 6);
+              drawNameTag(
+                ctx,
+                x,
+                y,
+                tier,
+                donor.name,
+                isSelected ? "#FBBF24" : "#38BDF8"
+              );
             }
+          } else if (isSelected) {
+            // 2) Interaktivní náhled vlastního domu nanečisto na vybrané prázdné parcele
+            const previewTier = getTier(previewAmount, plotNum === 1);
+            ctx.save();
+            ctx.globalAlpha = 0.82 + Math.sin(t * 5) * 0.12;
+            drawBuilding(ctx, x, y, previewTier, isNight, t, true);
+            ctx.restore();
+
+            const tagText = previewName.trim()
+              ? `${formattedHandle} (PREVIEW)`
+              : `YOUR PLOT #${String(plotNum).padStart(4, "0")}`;
+            drawNameTag(ctx, x, y, previewTier, tagText, "#FBBF24");
           }
         }
       }
@@ -350,10 +435,39 @@ export default function App() {
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [camera, donorMap, hoveredPlot, isNight, selectedPlot]);
+  }, [
+    camera,
+    donorMap,
+    formattedHandle,
+    hoveredPlot,
+    isNight,
+    previewAmount,
+    previewName,
+    selectedPlot,
+  ]);
+
+  function drawNameTag(ctx, x, y, tier, label, borderColor) {
+    ctx.font = "bold 9px system-ui, sans-serif";
+    const tw = ctx.measureText(label).width + 10;
+    const bh =
+      tier === "skyscraper" ? 56 : tier === "villa" || tier === "founder" ? 30 : 20;
+
+    ctx.fillStyle = "rgba(9, 13, 22, 0.92)";
+    ctx.beginPath();
+    ctx.roundRect(x - tw / 2, y - bh - 16, tw, 14, 4);
+    ctx.fill();
+
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.fillStyle = "#F8FAFC";
+    ctx.textAlign = "center";
+    ctx.fillText(label, x, y - bh - 6);
+  }
 
   // Vykreslení konkrétní budovy podle částky ($1 / $5 / $10+)
-  function drawBuilding(ctx, x, y, tier, night, t) {
+  function drawBuilding(ctx, x, y, tier, night, t, isPreview) {
     if (tier === "bungalow") {
       const h = 11;
       const w = 11;
@@ -383,6 +497,12 @@ export default function App() {
       ctx.lineTo(x - w, y - h);
       ctx.closePath();
       ctx.fill();
+
+      if (isPreview) {
+        ctx.strokeStyle = "#FDE047";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
       return;
     }
 
@@ -536,6 +656,8 @@ export default function App() {
   };
 
   const selectedDonor = donorMap.get(selectedPlot);
+  const selectedVip = VIP_PLOTS[selectedPlot];
+  const selectedDistrict = getDistrict(selectedPlot);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-white select-none font-sans">
@@ -550,38 +672,38 @@ export default function App() {
       />
 
       {/* Horní lišta s pokrokem a ovládáním */}
-      <header className="pointer-events-none absolute top-0 left-0 right-0 z-10 flex flex-wrap items-center justify-between gap-3 p-4">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-cyan-400/30 bg-slate-900/90 px-4 py-2.5 shadow-2xl backdrop-blur-md">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-cyan-400 font-black text-slate-950 shadow-lg">
+      <header className="pointer-events-none absolute top-0 left-0 right-0 z-10 flex flex-wrap items-center justify-between gap-2.5 p-3 sm:p-4">
+        <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-cyan-400/30 bg-slate-900/90 px-3.5 py-2 shadow-2xl backdrop-blur-md">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-cyan-400 font-black text-slate-950 shadow-lg">
             VC
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-black tracking-tight sm:text-lg">
+              <h1 className="text-sm font-black tracking-tight sm:text-base">
                 BUILD VICE CITY
               </h1>
-              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-bold text-emerald-300 border border-emerald-400/40">
+              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300 border border-emerald-400/40">
                 {TOTAL_PLOTS.toLocaleString()} PLOTS
               </span>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="hidden text-[11px] text-slate-400 sm:block">
               Xbox Series X + GTA VI Challenge • Hand-Coded in React
             </p>
           </div>
         </div>
 
         {/* Ukazatel cíle $1,600 */}
-        <div className="pointer-events-auto flex flex-1 max-w-md flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2.5 shadow-2xl backdrop-blur-md">
+        <div className="pointer-events-auto flex flex-1 max-w-md flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
           <div className="flex items-center justify-between text-xs font-extrabold">
-            <span className="flex items-center gap-1.5 text-emerald-300">
-              <DollarSign className="h-4 w-4" />
+            <span className="flex items-center gap-1 text-emerald-300">
+              <DollarSign className="h-3.5 w-3.5" />
               ${totalRaised.toLocaleString()} / ${GOAL_USD.toLocaleString()}
             </span>
             <span className="text-slate-300">
-              {activeDonors.length} / {TOTAL_PLOTS.toLocaleString()} Plots Built ({progressPct.toFixed(1)}%)
+              {activeDonors.length} / {TOTAL_PLOTS.toLocaleString()} Built ({progressPct.toFixed(1)}%)
             </span>
           </div>
-          <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-800 border border-slate-700">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800 border border-slate-700">
             <div
               className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-pink-500 transition-all duration-500"
               style={{ width: `${Math.max(progressPct, totalRaised > 0 ? 2 : 0)}%` }}
@@ -590,32 +712,32 @@ export default function App() {
         </div>
 
         {/* Vyhledávání + přepínače */}
-        <div className="pointer-events-auto flex items-center gap-2">
+        <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
           <form
             onSubmit={handleSearch}
-            className="flex items-center rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-1.5 backdrop-blur-md"
+            className="flex items-center rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 backdrop-blur-md"
           >
-            <Search className="h-4 w-4 text-slate-400" />
+            <Search className="h-3.5 w-3.5 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Find @user or #1..."
-              className="w-32 bg-transparent px-2 text-xs text-white placeholder-slate-400 focus:outline-none sm:w-40"
+              placeholder="Find @user or #420..."
+              className="w-28 bg-transparent px-2 text-xs text-white placeholder-slate-400 focus:outline-none sm:w-36"
             />
           </form>
 
           <button
             onClick={() => setDemoMode((v) => !v)}
-            title="Preview how the island looks with 45 builders"
-            className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+            title="Preview how the island looks with builders"
+            className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-bold transition ${
               demoMode
                 ? "border-amber-400 bg-amber-400/20 text-amber-200"
                 : "border-slate-700 bg-slate-900/90 text-slate-300 hover:border-slate-500"
             }`}
           >
             <Eye className="h-4 w-4" />
-            <span className="hidden sm:inline">
+            <span className="hidden md:inline">
               {demoMode ? "Demo: ON" : "Demo Preview"}
             </span>
           </button>
@@ -625,24 +747,65 @@ export default function App() {
             title="Toggle Day / Neon Night"
             className="rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-slate-200 hover:border-cyan-400 transition"
           >
-            {isNight ? <Sun className="h-4 w-4 text-amber-300" /> : <Moon className="h-4 w-4 text-cyan-300" />}
+            {isNight ? (
+              <Sun className="h-4 w-4 text-amber-300" />
+            ) : (
+              <Moon className="h-4 w-4 text-cyan-300" />
+            )}
           </button>
         </div>
       </header>
 
       {/* Banner pro prvního dárce (pokud je vybráno $0) */}
       {!demoMode && totalRaised === 0 && (
-        <div className="pointer-events-none absolute top-24 left-1/2 z-10 -translate-x-1/2">
+        <div className="pointer-events-none absolute top-28 sm:top-20 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
           <button
             onClick={() => {
               focusPlot(1);
+              setPreviewAmount(5);
               setShowModal(true);
             }}
-            className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-amber-300 bg-slate-900/95 px-4 py-1.5 text-xs font-black text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.45)] hover:scale-105 transition"
+            className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-amber-300 bg-slate-900/95 px-3.5 py-1.5 text-[11px] sm:text-xs font-black text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.45)] hover:scale-105 transition"
           >
-            <Crown className="h-4 w-4 text-amber-400" />
-            FOUNDER SPECIAL: Claim Plot #0001 for $1 & get a $5 Pool Villa!
+            <Crown className="h-4 w-4 shrink-0 text-amber-400" />
+            <span>FOUNDER SPECIAL: Claim #0001 for $1 & get a $5 Pool Villa!</span>
           </button>
+        </div>
+      )}
+
+      {/* Žebříček Top 5 stavitelů vpravo nahoře */}
+      {topBuilders.length > 0 && (
+        <div className="pointer-events-auto absolute top-32 right-3 sm:top-24 sm:right-4 z-10 w-52 rounded-2xl border border-slate-700/80 bg-slate-900/90 p-3 shadow-xl backdrop-blur-md">
+          <div className="flex items-center justify-between text-xs font-black text-amber-300">
+            <span className="flex items-center gap-1.5">
+              <Trophy className="h-3.5 w-3.5" /> TOP BUILDERS
+            </span>
+            <button
+              onClick={() => setShowLeaderboard((s) => !s)}
+              className="text-[10px] text-slate-400 hover:text-white"
+            >
+              {showLeaderboard ? "Hide" : "Show"}
+            </button>
+          </div>
+          {showLeaderboard && (
+            <div className="mt-2 space-y-1.5">
+              {topBuilders.map((b, i) => (
+                <button
+                  key={b.plot}
+                  onClick={() => focusPlot(b.plot)}
+                  className="flex w-full items-center justify-between rounded-lg bg-slate-950/80 px-2 py-1 text-left text-[11px] hover:bg-slate-800 transition"
+                >
+                  <span className="truncate font-bold text-slate-200">
+                    <span className="text-amber-400 mr-1">#{i + 1}</span>
+                    {b.name}
+                  </span>
+                  <span className="ml-1 shrink-0 font-mono font-bold text-emerald-400">
+                    ${b.amount}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -668,27 +831,52 @@ export default function App() {
         </button>
       </div>
 
-      {/* Spodní karta vybrané parcely + CTA tlačítko na Ko-fi */}
+      {/* Spodní karta vybrané parcely + živý náhled stavby */}
       <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-10 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
         <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-md">
-          <div className="flex items-center justify-between">
-            <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-mono text-xs font-black text-cyan-300">
-              PLOT #{String(selectedPlot).padStart(4, "0")}
-            </span>
-            {selectedDonor ? (
-              <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-300">
-                OWNED • ${selectedDonor.amount}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-mono text-xs font-black text-cyan-300">
+                PLOT #{String(selectedPlot).padStart(4, "0")}
               </span>
-            ) : (
-              <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-bold text-amber-300">
-                AVAILABLE ($1+)
+              <span className="flex items-center gap-1 rounded-lg bg-slate-800/70 px-2 py-1 text-[11px] font-semibold text-slate-300">
+                <MapPin className="h-3 w-3 text-pink-400" />
+                {selectedDistrict}
               </span>
-            )}
+            </div>
+
+            <button
+              onClick={handleSharePlot}
+              title="Copy direct link to this plot"
+              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2 py-1 text-[11px] font-bold text-slate-300 hover:border-cyan-400 hover:text-white transition"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="h-3 w-3 text-emerald-400" /> Copied
+                </>
+              ) : (
+                <>
+                  <Share2 className="h-3 w-3" /> Share
+                </>
+              )}
+            </button>
           </div>
+
+          {selectedVip && (
+            <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-pink-500/15 border border-pink-500/30 px-2.5 py-1 text-[11px] font-bold text-pink-300">
+              <Flame className="h-3.5 w-3.5 text-pink-400" />
+              VIP SPOT: {selectedVip.label}
+            </div>
+          )}
 
           {selectedDonor ? (
             <div className="mt-2.5">
-              <div className="text-lg font-black text-white">{selectedDonor.name}</div>
+              <div className="flex items-center justify-between">
+                <div className="text-lg font-black text-white">{selectedDonor.name}</div>
+                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-300">
+                  OWNED • ${selectedDonor.amount}
+                </span>
+              </div>
               <div className="text-xs font-semibold text-pink-400">
                 {getTierLabel(getTier(selectedDonor.amount, selectedPlot === 1))}
               </div>
@@ -700,15 +888,37 @@ export default function App() {
             </div>
           ) : (
             <div className="mt-2.5">
-              <div className="text-sm font-bold text-slate-200">
-                {selectedPlot === 1
-                  ? "👑 Mayor's Corner — Unclaimed!"
-                  : "Empty beachfront land ready to build"}
+              <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-1.5">
+                <span>Test-build your house on this plot:</span>
+                <span className="text-amber-300">AVAILABLE</span>
               </div>
-              <p className="mt-1 text-xs text-slate-400">
-                Send $1 on Ko-fi with your <span className="text-white font-semibold">@username</span> and{" "}
-                <span className="text-cyan-300 font-semibold">#{selectedPlot}</span> to build here!
-              </p>
+
+              {/* Zadání jména + výběr typu budovy pro okamžitý náhled na mapě */}
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={previewName}
+                  onChange={(e) => setPreviewName(e.target.value)}
+                  placeholder="Type your @username..."
+                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+                />
+                <div className="flex rounded-lg border border-slate-700 bg-slate-950 p-0.5 text-[11px] font-black">
+                  {[1, 5, 10].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setPreviewAmount(amt)}
+                      className={`rounded-md px-2 py-1 transition ${
+                        previewAmount === amt
+                          ? "bg-cyan-400 text-slate-950"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      ${amt}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -717,7 +927,9 @@ export default function App() {
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-2.5 text-sm font-black text-slate-950 shadow-lg hover:brightness-110 transition"
           >
             <Sparkles className="h-4 w-4" />
-            {selectedDonor ? "Build Your Own Plot ($1)" : `Claim Plot #${String(selectedPlot).padStart(4, "0")} ($1)`}
+            {selectedDonor
+              ? "Build Your Own Plot ($1)"
+              : `Lock In Plot #${String(selectedPlot).padStart(4, "0")} ($${previewAmount})`}
           </button>
         </div>
 
@@ -735,7 +947,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Modální okno s instrukcemi pro Ko-fi */}
+      {/* Modální okno s jedním kliknutím pro zkopírování poznámky a otevření Ko-fi */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
           <div className="relative w-full max-w-md rounded-3xl border-2 border-cyan-400/50 bg-slate-900 p-6 shadow-2xl">
@@ -747,44 +959,86 @@ export default function App() {
             </button>
 
             <div className="flex items-center gap-2 text-cyan-300 text-xs font-black uppercase tracking-wider">
-              <Trophy className="h-4 w-4" /> Join the {TOTAL_PLOTS.toLocaleString()} Builders
+              <Trophy className="h-4 w-4" /> {selectedDistrict} •{" "}
+              {TOTAL_PLOTS.toLocaleString()} Builders
             </div>
             <h2 className="mt-1 text-2xl font-black text-white">
               Claim Plot #{String(selectedPlot).padStart(4, "0")}
             </h2>
-            <p className="mt-2 text-xs leading-relaxed text-slate-300">
-              Every $1 goes directly toward the Xbox Series X + GTA VI goal (plus PayPal fees) and permanently places your building on this island + in the next YouTube/TikTok episode.
+            <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
+              Your building stays permanently on this live island and gets featured in tomorrow's YouTube & TikTok episode!
             </p>
 
-            <div className="mt-4 space-y-2 rounded-2xl border border-slate-800 bg-slate-950 p-3.5 text-xs">
-              <div className="flex justify-between">
-                <span className="font-bold text-sky-400">$1 Donation</span>
-                <span className="text-slate-300">Beach Bungalow + @name</span>
+            {/* Rychlé nastavení jména a typu budovy */}
+            <div className="mt-4 space-y-3 rounded-2xl border border-slate-800 bg-slate-950 p-3.5 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                  1. Your @username (shown above your building)
+                </label>
+                <input
+                  type="text"
+                  value={previewName}
+                  onChange={(e) => setPreviewName(e.target.value)}
+                  placeholder="@your_username"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+                />
               </div>
-              <div className="flex justify-between">
-                <span className="font-bold text-pink-400">$5 Donation</span>
-                <span className="text-slate-300">Luxury Pool Villa + custom note</span>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                  2. Choose your building size
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { amt: 1, label: "Bungalow", color: "text-sky-400" },
+                    { amt: 5, label: "Pool Villa", color: "text-pink-400" },
+                    { amt: 10, label: "Skyscraper", color: "text-emerald-400" },
+                  ].map((tier) => (
+                    <button
+                      key={tier.amt}
+                      type="button"
+                      onClick={() => setPreviewAmount(tier.amt)}
+                      className={`rounded-xl border p-2 text-center transition ${
+                        previewAmount === tier.amt
+                          ? "border-cyan-400 bg-cyan-400/15"
+                          : "border-slate-800 bg-slate-900 hover:border-slate-700"
+                      }`}
+                    >
+                      <div className={`text-sm font-black ${tier.color}`}>
+                        ${tier.amt}
+                      </div>
+                      <div className="text-[10px] font-bold text-slate-300">
+                        {tier.label}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="font-bold text-emerald-400">$10+ Donation</span>
-                <span className="text-slate-300">Neon Skyscraper + rooftop beacon</span>
+
+              <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-200">
+                <div className="font-bold">3. Paste this note on Ko-fi (auto-copied):</div>
+                <div className="mt-1 flex items-center justify-between rounded-lg bg-slate-950/90 px-2.5 py-1.5 font-mono text-xs text-white">
+                  <span className="truncate">{kofiNoteText}</span>
+                  <Copy className="h-3.5 w-3.5 shrink-0 text-amber-300 ml-2" />
+                </div>
               </div>
             </div>
 
-            <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">
-              <strong>Important:</strong> Write your <code>@username</code> and{" "}
-              <code>#{selectedPlot}</code> in the Ko-fi message box so I know where to place your building!
-            </div>
-
-            <a
-              href={KOFI_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-pink-500 py-3 text-sm font-black text-slate-950 shadow-xl hover:brightness-110 transition"
+            <button
+              onClick={handleCopyAndOpenKofi}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-pink-500 py-3 text-sm font-black text-slate-950 shadow-xl hover:brightness-110 transition"
             >
-              Open Ko-fi ($1 Minimum)
-              <ExternalLink className="h-4 w-4" />
-            </a>
+              {copiedNote ? (
+                <>
+                  <Check className="h-4 w-4" /> Note Copied! Opening Ko-fi...
+                </>
+              ) : (
+                <>
+                  Copy Note & Open Ko-fi (${previewAmount})
+                  <ExternalLink className="h-4 w-4" />
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}
