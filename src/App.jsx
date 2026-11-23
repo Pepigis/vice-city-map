@@ -10,7 +10,6 @@ import {
   Sparkles,
   Sun,
   Trophy,
-  Users,
   X,
   ZoomIn,
   ZoomOut,
@@ -20,7 +19,7 @@ import {
  * ============================================================================
  * TADY PŘIDÁVÁŠ NOVÉ DÁRCE PO PLATBĚ NA KO-FI
  * Stačí přidat objekt do pole LIVE_DONORS a uložit (git push -> Vercel aktualizuje web).
- * - plot: číslo parcely 1 až 1224
+ * - plot: číslo parcely 1 až 1600
  * - name: @uživatelské_jméno dárce
  * - amount: částka v USD (1 = Bungalov, 5+ = Vila s bazénem, 10+ = Mrakodrap)
  * - message: volitelný vzkaz z Ko-fi
@@ -60,10 +59,10 @@ const DEMO_DONORS = [
   { plot: 250, name: "@zero_to_hero", amount: 10, message: "Quarter thousand!" },
 ];
 
-const COLS = 36;
-const ROWS = 34; // 36 * 34 = 1,224 parcel
+const COLS = 40;
+const ROWS = 40; // 40 * 40 = 1,600 parcel (rezerva na poplatky PayPalu)
 const TOTAL_PLOTS = COLS * ROWS;
-const GOAL_USD = 1224;
+const GOAL_USD = 1600;
 const KOFI_URL = "https://ko-fi.com/vectorbra1n";
 
 const TILE_W = 44;
@@ -99,8 +98,8 @@ export default function App() {
   const [hoveredPlot, setHoveredPlot] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
-  // Kamera (posun a přiblížení)
-  const [camera, setCamera] = useState({ x: 0, y: -60, zoom: 1.05 });
+  // Kamera (posun a přiblížení pro ostrov 40x40)
+  const [camera, setCamera] = useState({ x: 0, y: -50, zoom: 0.95 });
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, moved: false });
 
   const activeDonors = demoMode ? DEMO_DONORS : LIVE_DONORS;
@@ -121,7 +120,7 @@ export default function App() {
 
   const progressPct = Math.min(100, (totalRaised / GOAL_USD) * 100);
 
-  // Převod čísla parcely (1..1224) na souřadnice mřížky
+  // Převod čísla parcely (1..1600) na souřadnice mřížky
   const plotToGrid = (plotNum) => {
     const idx = plotNum - 1;
     const row = Math.floor(idx / COLS);
@@ -257,7 +256,7 @@ export default function App() {
       ctx.fillStyle = isNight ? "#312E81" : "#FDE68A";
       ctx.fill();
 
-      // Vykreslení všech 1 224 parcel odzadu dopředu (malířův algoritmus)
+      // Vykreslení všech 1 600 parcel odzadu dopředu (malířův algoritmus)
       for (let row = 0; row < ROWS; row++) {
         for (let col = 0; col < COLS; col++) {
           const plotNum = row * COLS + col + 1;
@@ -267,8 +266,8 @@ export default function App() {
           const isHovered = hoveredPlot === plotNum;
           const isPlotOne = plotNum === 1;
 
-          // Hlavní promenáda uprostřed ostrova
-          const isAvenue = col === 17 || col === 18 || row === 16 || row === 17;
+          // Hlavní promenáda přesně uprostřed ostrova 40x40
+          const isAvenue = col === 19 || col === 20 || row === 19 || row === 20;
 
           // Základní kosočtverec parcely
           ctx.beginPath();
@@ -356,10 +355,8 @@ export default function App() {
   // Vykreslení konkrétní budovy podle částky ($1 / $5 / $10+)
   function drawBuilding(ctx, x, y, tier, night, t) {
     if (tier === "bungalow") {
-      // Malý plážový bungalov ($1)
       const h = 11;
       const w = 11;
-      // Levá stěna
       ctx.fillStyle = night ? "#0284C7" : "#38BDF8";
       ctx.beginPath();
       ctx.moveTo(x - w, y);
@@ -369,7 +366,6 @@ export default function App() {
       ctx.closePath();
       ctx.fill();
 
-      // Pravá stěna
       ctx.fillStyle = night ? "#0369A1" : "#0284C7";
       ctx.beginPath();
       ctx.moveTo(x, y + w * 0.5);
@@ -379,7 +375,6 @@ export default function App() {
       ctx.closePath();
       ctx.fill();
 
-      // Růžová Vice City střecha
       ctx.fillStyle = "#F472B6";
       ctx.beginPath();
       ctx.moveTo(x, y - w * 0.5 - h);
@@ -392,12 +387,10 @@ export default function App() {
     }
 
     if (tier === "villa" || tier === "founder") {
-      // Luxusní vila s bazénem ($5 nebo #0001 Founder)
       const h = 18;
       const w = 13;
       const isFounder = tier === "founder";
 
-      // Tělo vily
       ctx.fillStyle = isFounder ? "#FDE047" : night ? "#E2E8F0" : "#FFFFFF";
       ctx.beginPath();
       ctx.moveTo(x - w, y);
@@ -416,7 +409,6 @@ export default function App() {
       ctx.closePath();
       ctx.fill();
 
-      // Střecha s tyrkysovým střešním bazénem
       ctx.fillStyle = isFounder ? "#F59E0B" : "#EC4899";
       ctx.beginPath();
       ctx.moveTo(x, y - w * 0.5 - h);
@@ -426,7 +418,6 @@ export default function App() {
       ctx.closePath();
       ctx.fill();
 
-      // Zářící bazén na terase
       ctx.fillStyle = "#22D3EE";
       ctx.beginPath();
       ctx.ellipse(x, y - h, 5.5, 2.8, 0, 0, Math.PI * 2);
@@ -438,7 +429,6 @@ export default function App() {
     const h = 44;
     const w = 13;
 
-    // Levá fasáda
     ctx.fillStyle = night ? "#1E1B4B" : "#3B82F6";
     ctx.beginPath();
     ctx.moveTo(x - w, y);
@@ -448,7 +438,6 @@ export default function App() {
     ctx.closePath();
     ctx.fill();
 
-    // Pravá fasáda
     ctx.fillStyle = night ? "#0F172A" : "#1D4ED8";
     ctx.beginPath();
     ctx.moveTo(x, y + w * 0.5);
@@ -458,7 +447,6 @@ export default function App() {
     ctx.closePath();
     ctx.fill();
 
-    // Neonová okna v noci
     if (night) {
       ctx.fillStyle = "#FDE047";
       for (let wy = 7; wy < h - 6; wy += 7) {
@@ -467,7 +455,6 @@ export default function App() {
       }
     }
 
-    // Střecha + neonový lem
     ctx.fillStyle = "#10B981";
     ctx.beginPath();
     ctx.moveTo(x, y - w * 0.5 - h);
@@ -477,7 +464,6 @@ export default function App() {
     ctx.closePath();
     ctx.fill();
 
-    // Blikající maják na špičce mrakodrapu
     const beacon = 0.4 + Math.abs(Math.sin(t * 4 + x)) * 0.6;
     ctx.fillStyle = `rgba(244, 114, 182, ${beacon})`;
     ctx.beginPath();
@@ -575,7 +561,7 @@ export default function App() {
                 BUILD VICE CITY
               </h1>
               <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-bold text-emerald-300 border border-emerald-400/40">
-                1,224 PLOTS
+                {TOTAL_PLOTS.toLocaleString()} PLOTS
               </span>
             </div>
             <p className="text-xs text-slate-400">
@@ -584,7 +570,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Ukazatel cíle $1,224 */}
+        {/* Ukazatel cíle $1,600 */}
         <div className="pointer-events-auto flex flex-1 max-w-md flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2.5 shadow-2xl backdrop-blur-md">
           <div className="flex items-center justify-between text-xs font-extrabold">
             <span className="flex items-center gap-1.5 text-emerald-300">
@@ -592,7 +578,7 @@ export default function App() {
               ${totalRaised.toLocaleString()} / ${GOAL_USD.toLocaleString()}
             </span>
             <span className="text-slate-300">
-              {activeDonors.length} / {TOTAL_PLOTS} Plots Built ({progressPct.toFixed(1)}%)
+              {activeDonors.length} / {TOTAL_PLOTS.toLocaleString()} Plots Built ({progressPct.toFixed(1)}%)
             </span>
           </div>
           <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-800 border border-slate-700">
@@ -675,7 +661,7 @@ export default function App() {
           <ZoomOut className="h-5 w-5" />
         </button>
         <button
-          onClick={() => setCamera({ x: 0, y: -60, zoom: 1.05 })}
+          onClick={() => setCamera({ x: 0, y: -50, zoom: 0.95 })}
           className="rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 text-slate-200 hover:border-cyan-400"
         >
           <RotateCcw className="h-5 w-5" />
@@ -761,13 +747,13 @@ export default function App() {
             </button>
 
             <div className="flex items-center gap-2 text-cyan-300 text-xs font-black uppercase tracking-wider">
-              <Trophy className="h-4 w-4" /> Join the 1,224 Builders
+              <Trophy className="h-4 w-4" /> Join the {TOTAL_PLOTS.toLocaleString()} Builders
             </div>
             <h2 className="mt-1 text-2xl font-black text-white">
               Claim Plot #{String(selectedPlot).padStart(4, "0")}
             </h2>
             <p className="mt-2 text-xs leading-relaxed text-slate-300">
-              Every $1 goes directly toward the Xbox Series X + GTA VI goal and permanently places your building on this island + in the next YouTube/TikTok episode.
+              Every $1 goes directly toward the Xbox Series X + GTA VI goal (plus PayPal fees) and permanently places your building on this island + in the next YouTube/TikTok episode.
             </p>
 
             <div className="mt-4 space-y-2 rounded-2xl border border-slate-800 bg-slate-950 p-3.5 text-xs">
