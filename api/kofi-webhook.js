@@ -34,37 +34,45 @@ export default async function handler(req, res) {
     return res.status(405).send("Method not allowed");
   }
 
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceKey || !process.env.KOFI_VERIFICATION_TOKEN) {
+    console.error("Missing environment variables");
+    return res.status(500).send("Server not configured");
+  }
+
   try {
     const raw = await readRawBody(req);
     const params = new URLSearchParams(raw);
     const payload = params.get("data");
     if (!payload) {
+      console.error("No data field in request");
       return res.status(400).send("Missing data");
     }
 
     const event = JSON.parse(payload);
 
-    // 1. Reject anything that does not carry our secret token
-    if (event.verification_token !== process.env.KOFI_WEBHOOK_TOKEN) {
+    if (event.verification_token !== process.env.KOFI_VERIFICATION_TOKEN) {
+      console.error("Verification token mismatch");
       return res.status(401).send("Invalid token");
     }
 
-    // 2. Only handle one-off donations
     if (event.type !== "Donation") {
       return res.status(200).send("Ignored event type");
     }
 
     const amount = parseFloat(event.amount);
     const message = (event.message || "").trim();
-    const handle = parseHandle(message) || `@${event.from_name || "anonymous"}`.replace(/\s+/g, "_");
+    const handle =
+      parseHandle(message) ||
+      `@${(event.from_name || "anonymous").replace(/\s+/g, "_")}`;
     const plot = parsePlot(message);
 
     if (!amount || amount < 1) {
       return res.status(200).send("Amount too small");
     }
 
-    // If the buyer forgot the plot number, keep the record without a plot.
-    // It will not appear on the map until you assign a plot in Supabase.
     const row = {
       kofi_transaction_id: event.kofi_transaction_id,
       plot,
@@ -74,19 +82,17 @@ export default async function handler(req, res) {
       status: plot ? "active" : "needs_plot",
     };
 
-    const supabaseRes = await fetch(`${process.env.SUPABASE_URL}/rest/v1/donors`, {
+    const supabaseRes = await fetch(`${supabaseUrl}/rest/v1/donors`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
         Prefer: "return=minimal",
       },
       body: JSON.stringify(row),
     });
 
-    // 409 means the plot is already taken or this transaction was already saved.
-    // Return 200 so Ko-fi does not keep retrying. Check the logs for these cases.
     if (supabaseRes.status === 409) {
       console.warn("Duplicate or taken plot", { plot, handle, id: event.kofi_transaction_id });
       return res.status(200).send("Duplicate or taken plot");
@@ -98,6 +104,7 @@ export default async function handler(req, res) {
       return res.status(500).send("Database error");
     }
 
+    console.log("Donation saved", { plot, handle, amount });
     return res.status(200).send("OK");
   } catch (err) {
     console.error("Webhook error", err);
