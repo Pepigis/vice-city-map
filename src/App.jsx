@@ -7,6 +7,9 @@ import {
   ExternalLink,
   Eye,
   Flame,
+  Gamepad2,
+  HelpCircle,
+  Loader2,
   MapPin,
   Moon,
   Navigation,
@@ -23,22 +26,10 @@ import {
 } from "lucide-react";
 import Island3D from "./Island3D";
 
-/**
- * ============================================================================
- * TADY PŘIDÁVÁŠ NOVÉ DÁRCE PO PLATBĚ NA KO-FI
- * Stačí přidat objekt do pole LIVE_DONORS a uložit (git push -> Vercel aktualizuje web).
- * - plot: číslo parcely 1 až 1600
- * - name: @uživatelské_jméno dárce
- * - amount: částka v USD (1 = Bungalov, 5+ = Vila s bazénem, 10+ = Mrakodrap)
- * - message: volitelný vzkaz z Ko-fi
- * ============================================================================
- */
-const LIVE_DONORS = [
-  // Příklad prvního dárce (odkomentuj až někdo pošle první $1):
-  // { plot: 1, name: "@first_builder", amount: 1, message: "First! Road to GTA 6!" },
-];
+// Volitelná záložní/ruční data (živí dárci se načítají automaticky ze Supabase)
+const FALLBACK_DONORS = [];
 
-// Demo data pro natáčení ukázek do videa (přepíná se tlačítkem "Demo" v hlavičce)
+// Demo data pro natáčení ukázek do videa (aktivuje se přes /?demo=1)
 const DEMO_DONORS = [
   { plot: 1, name: "@vice_mayor", amount: 10, message: "Claimed #0001! Let's get that Xbox!" },
   { plot: 2, name: "@alex_codes", amount: 5, message: "Respect for hand-coding in 3D" },
@@ -66,8 +57,21 @@ const DEMO_DONORS = [
 const COLS = 40;
 const ROWS = 40;
 const TOTAL_PLOTS = COLS * ROWS;
-const GOAL_USD = 1600;
+const XBOX_GOAL_USD = 650;
+const FINAL_GOAL_USD = 1600;
 const KOFI_URL = "https://ko-fi.com/vectorbra1n";
+
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || "")
+  .trim()
+  .replace(/\/+$/, "")
+  .replace(/\/rest\/v1$/i, "");
+const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
+
+const MILESTONES = [
+  { amount: 100, label: "$100" },
+  { amount: 300, label: "$300" },
+  { amount: 650, label: "$650 Xbox + GTA VI", primary: true },
+];
 
 const VIP_PLOTS = {
   1: { label: "Mayor's Founder Corner", short: "#0001" },
@@ -97,14 +101,21 @@ function getTierLabel(amount, isFounder) {
 
 export default function App() {
   const audioCtxRef = useRef(null);
+  const prevCountRef = useRef(null);
 
   const [theme, setTheme] = useState("night");
   const [soundOn, setSoundOn] = useState(true);
-  const [demoMode, setDemoMode] = useState(false);
+  const [demoMode, setDemoMode] = useState(
+    () => new URLSearchParams(window.location.search).get("demo") === "1"
+  );
+  const [liveRows, setLiveRows] = useState(FALLBACK_DONORS);
+  const [loadingDonors, setLoadingDonors] = useState(Boolean(SUPABASE_URL && SUPABASE_ANON_KEY));
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlot, setSelectedPlot] = useState(1);
   const [hoveredPlot, setHoveredPlot] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(true);
 
   const [focusSignal, setFocusSignal] = useState(0);
@@ -166,14 +177,85 @@ export default function App() {
     [soundOn]
   );
 
-  const activeDonors = demoMode ? DEMO_DONORS : LIVE_DONORS;
+  // Načítání živých dárců ze Supabase + automatická kontrola nových staveb každých 30 s
+  useEffect(() => {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      setLoadingDonors(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchDonors = async () => {
+      try {
+        const headers = { apikey: SUPABASE_ANON_KEY };
+        if (SUPABASE_ANON_KEY.startsWith("eyJ")) {
+          headers.Authorization = `Bearer ${SUPABASE_ANON_KEY}`;
+        }
+
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/donors?select=plot,name,amount,message,status&order=created_at.asc`,
+          { headers }
+        );
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (cancelled || !Array.isArray(data)) return;
+
+        const validRows = data
+          .filter((r) => r.status !== "refunded" && r.status !== "rejected")
+          .map((r) => ({
+            plot: r.plot ? Number(r.plot) : null,
+            name: r.name || "@builder",
+            amount: Number(r.amount) || 1,
+            message: r.message || "",
+            status: r.status || "active",
+          }));
+
+        if (prevCountRef.current !== null && validRows.length > prevCountRef.current) {
+          playSfx("build");
+        }
+        prevCountRef.current = validRows.length;
+        setLiveRows(validRows);
+      } catch {
+        // Při výpadku sítě ponecháme poslední načtený stav
+      } finally {
+        if (!cancelled) setLoadingDonors(false);
+      }
+    };
+
+    fetchDonors();
+    const intervalId = setInterval(fetchDonors, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [playSfx]);
+
+  const rawSourceRows = demoMode ? DEMO_DONORS : liveRows;
+
+  // Dárci přiřazení ke konkrétní parcele (1–1600) pro vykreslení na 3D ostrově
+  const activeDonors = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    for (const d of rawSourceRows) {
+      if (
+        d.plot >= 1 &&
+        d.plot <= TOTAL_PLOTS &&
+        (!d.status || d.status === "active") &&
+        !seen.has(d.plot)
+      ) {
+        seen.add(d.plot);
+        list.push(d);
+      }
+    }
+    return list;
+  }, [rawSourceRows]);
 
   const donorMap = useMemo(() => {
     const map = new Map();
     for (const d of activeDonors) {
-      if (d.plot >= 1 && d.plot <= TOTAL_PLOTS) {
-        map.set(d.plot, d);
-      }
+      map.set(d.plot, d);
     }
     return map;
   }, [activeDonors]);
@@ -184,11 +266,14 @@ export default function App() {
       .slice(0, 5);
   }, [activeDonors]);
 
+  // Celková vybraná částka (počítá i příspěvky, u kterých dárce zapomněl číslo parcely)
   const totalRaised = useMemo(() => {
-    return activeDonors.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-  }, [activeDonors]);
+    return rawSourceRows.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  }, [rawSourceRows]);
 
-  const progressPct = Math.min(100, (totalRaised / GOAL_USD) * 100);
+  const finalPct = Math.min(100, (totalRaised / FINAL_GOAL_USD) * 100);
+  const xboxPct = Math.min(100, (totalRaised / XBOX_GOAL_USD) * 100);
+  const xboxUnlocked = totalRaised >= XBOX_GOAL_USD;
 
   const formattedHandle = previewName.trim()
     ? previewName.trim().startsWith("@")
@@ -241,7 +326,7 @@ export default function App() {
   const kofiNoteText = `${formattedHandle} - Plot #${String(selectedPlot).padStart(
     4,
     "0"
-  )} ($${previewAmount})`;
+  )}`;
 
   const handleCopyAndOpenKofi = () => {
     navigator.clipboard?.writeText(kofiNoteText);
@@ -320,22 +405,56 @@ export default function App() {
           </div>
         </div>
 
-        {/* Ukazatel cíle $1,600 */}
-        <div className="pointer-events-auto flex flex-1 max-w-md flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
-          <div className="flex items-center justify-between text-xs font-extrabold">
+        {/* Ukazatel cíle s milníky ($100, $300, $650 Xbox + GTA VI, $1,600) */}
+        <div className="pointer-events-auto flex flex-1 max-w-lg flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
+          <div className="flex items-center justify-between gap-2 text-xs font-extrabold">
             <span className="flex items-center gap-1 text-emerald-300">
               <DollarSign className="h-3.5 w-3.5" />
-              ${totalRaised.toLocaleString()} / ${GOAL_USD.toLocaleString()}
+              ${totalRaised.toLocaleString()} / ${FINAL_GOAL_USD.toLocaleString()}
+              {loadingDonors && (
+                <Loader2 className="ml-1 h-3 w-3 animate-spin text-cyan-400" />
+              )}
             </span>
-            <span className="text-slate-300">
-              {activeDonors.length} / {TOTAL_PLOTS.toLocaleString()} Built ({progressPct.toFixed(1)}%)
+
+            <span className="flex items-center gap-1 text-[11px] font-black text-amber-300">
+              <Gamepad2 className="h-3.5 w-3.5 text-amber-400" />
+              {xboxUnlocked
+                ? "Xbox + GTA VI UNLOCKED!"
+                : `$650 Xbox + GTA VI (${xboxPct.toFixed(0)}%)`}
             </span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800 border border-slate-700">
+
+          {/* Progress bar se značkami milníků */}
+          <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-slate-800 border border-slate-700">
             <div
               className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-pink-500 transition-all duration-500"
-              style={{ width: `${Math.max(progressPct, totalRaised > 0 ? 2 : 0)}%` }}
+              style={{ width: `${Math.max(finalPct, totalRaised > 0 ? 2 : 0)}%` }}
             />
+            {MILESTONES.map((m) => {
+              const leftPct = (m.amount / FINAL_GOAL_USD) * 100;
+              return (
+                <div
+                  key={m.amount}
+                  title={m.label}
+                  style={{ left: `${leftPct}%` }}
+                  className={`absolute top-0 bottom-0 -translate-x-1/2 ${
+                    m.primary
+                      ? "w-0.5 bg-amber-300 shadow-[0_0_8px_#FBBF24]"
+                      : "w-px bg-slate-400/60"
+                  }`}
+                />
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+            <span>
+              Milestones: $100 • $300 •{" "}
+              <strong className="text-amber-300">$650 Xbox</strong>
+            </span>
+            <span>
+              {activeDonors.length} / {TOTAL_PLOTS.toLocaleString()} Built
+            </span>
           </div>
         </div>
 
@@ -355,20 +474,20 @@ export default function App() {
             />
           </form>
 
-          <button
-            onClick={() => {
-              playSfx("select");
-              setDemoMode((v) => !v);
-            }}
-            className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-bold transition ${
-              demoMode
-                ? "border-amber-400 bg-amber-400/20 text-amber-200"
-                : "border-slate-700 bg-slate-900/90 text-slate-300 hover:border-slate-500"
-            }`}
-          >
-            <Eye className="h-4 w-4" />
-            <span className="hidden md:inline">{demoMode ? "Demo: ON" : "Demo"}</span>
-          </button>
+          {/* Zobrazí se pouze při spuštění s ?demo=1 */}
+          {demoMode && (
+            <button
+              onClick={() => {
+                playSfx("select");
+                setDemoMode(false);
+              }}
+              title="Exit secret demo mode"
+              className="flex items-center gap-1.5 rounded-xl border border-amber-400 bg-amber-400/20 px-2.5 py-2 text-xs font-bold text-amber-200 transition"
+            >
+              <Eye className="h-4 w-4" />
+              <span>Demo: ON</span>
+            </button>
+          )}
 
           <button
             onClick={cycleTheme}
@@ -417,8 +536,8 @@ export default function App() {
       </header>
 
       {/* Banner pro prvního dárce */}
-      {!demoMode && totalRaised === 0 && (
-        <div className="pointer-events-none absolute top-28 sm:top-20 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
+      {!demoMode && !loadingDonors && totalRaised === 0 && (
+        <div className="pointer-events-none absolute top-32 sm:top-22 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
           <button
             onClick={() => {
               focusPlot(1);
@@ -434,11 +553,11 @@ export default function App() {
       )}
 
       {/* Pravý HUD sloupec: GTA Radar + Top 5 stavitelů */}
-      <div className="pointer-events-none absolute top-32 right-3 sm:top-22 sm:right-4 z-10 flex flex-col items-end gap-2.5">
+      <div className="pointer-events-none absolute top-36 right-3 sm:top-24 sm:right-4 z-10 flex flex-col items-end gap-2.5">
         <div
           onClick={handleRadarClick}
           title="GTA Island Radar — Click anywhere to fly 3D camera"
-          className="pointer-events-auto relative h-28 w-28 sm:h-32 sm:w-32 cursor-crosshair overflow-hidden rounded-2xl border-2 border-cyan-400/60 bg-slate-950/90 p-1.5 shadow-[0_0_20px_rgba(6,182,212,0.3)] backdrop-blur-md"
+          className="pointer-events-auto relative h-24 w-24 sm:h-32 sm:w-32 cursor-crosshair overflow-hidden rounded-2xl border-2 border-cyan-400/60 bg-slate-950/90 p-1.5 shadow-[0_0_20px_rgba(6,182,212,0.3)] backdrop-blur-md"
         >
           <svg viewBox="0 0 40 40" className="h-full w-full">
             <rect x="0" y="0" width="40" height="40" rx="2" fill="#0F172A" />
@@ -469,7 +588,7 @@ export default function App() {
         </div>
 
         {topBuilders.length > 0 && (
-          <div className="pointer-events-auto w-48 sm:w-52 rounded-2xl border border-slate-700/80 bg-slate-900/90 p-2.5 shadow-xl backdrop-blur-md">
+          <div className="pointer-events-auto w-44 sm:w-52 rounded-2xl border border-slate-700/80 bg-slate-900/90 p-2.5 shadow-xl backdrop-blur-md">
             <div className="flex items-center justify-between text-[11px] font-black text-amber-300">
               <span className="flex items-center gap-1">
                 <Trophy className="h-3.5 w-3.5" /> TOP BUILDERS
@@ -504,9 +623,9 @@ export default function App() {
         )}
       </div>
 
-      {/* Spodní karta vybrané parcely + živý 3D náhled stavby */}
-      <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-10 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
-        <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-md">
+      {/* Spodní karta vybrané parcely + patička s legendou a Terms */}
+      <div className="pointer-events-none absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-10 flex flex-col items-start justify-between gap-2.5 sm:flex-row sm:items-end">
+        <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 sm:p-4 shadow-2xl backdrop-blur-md">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-mono text-xs font-black text-cyan-300">
@@ -610,16 +729,30 @@ export default function App() {
           </button>
         </div>
 
-        <div className="pointer-events-auto hidden items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-2.5 text-xs text-slate-300 backdrop-blur-md lg:flex">
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-sm bg-sky-400" /> $1 Bungalow
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-sm bg-pink-500" /> $5 Pool Villa
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-sm bg-emerald-400" /> $10+ Skyscraper
-          </span>
+        {/* Patička vpravo dole: Legenda + How it Works & Terms */}
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end">
+          <div className="hidden items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-2.5 text-xs text-slate-300 backdrop-blur-md lg:flex">
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-sm bg-sky-400" /> $1 Bungalow
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-sm bg-pink-500" /> $5 Pool Villa
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-sm bg-emerald-400" /> $10+ Skyscraper
+            </span>
+          </div>
+
+          <button
+            onClick={() => {
+              playSfx("select");
+              setShowTermsModal(true);
+            }}
+            className="flex items-center gap-1.5 rounded-2xl border border-slate-700/80 bg-slate-900/90 px-3.5 py-2.5 text-xs font-bold text-slate-300 shadow-xl backdrop-blur-md hover:border-cyan-400 hover:text-white transition"
+          >
+            <HelpCircle className="h-3.5 w-3.5 text-cyan-400" />
+            <span>How it Works & Terms</span>
+          </button>
         </div>
       </div>
 
@@ -642,7 +775,7 @@ export default function App() {
               Claim Plot #{String(selectedPlot).padStart(4, "0")}
             </h2>
             <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
-              Your 3D building stays permanently on this live island and gets featured in tomorrow's YouTube & TikTok episode!
+              Your 3D building appears live on this island automatically after checkout and gets featured in our YouTube & TikTok series!
             </p>
 
             <div className="mt-4 space-y-3 rounded-2xl border border-slate-800 bg-slate-950 p-3.5 text-xs">
@@ -716,6 +849,106 @@ export default function App() {
                   <ExternalLink className="h-4 w-4" />
                 </>
               )}
+            </button>
+
+            <p className="mt-2.5 text-center text-[10px] text-slate-400">
+              By supporting on Ko-fi, you agree to our{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowModal(false);
+                  setShowTermsModal(true);
+                }}
+                className="underline hover:text-cyan-300"
+              >
+                Terms & Refund Policy
+              </button>
+              .
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Modální okno: How it Works & Terms */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+            <button
+              onClick={() => setShowTermsModal(false)}
+              className="absolute top-4 right-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <h2 className="text-xl font-black text-white">
+              How Build Vice City Works & Terms
+            </h2>
+            <p className="mt-1 text-xs text-slate-400">
+              Community 3D island challenge • Road to Xbox Series X + GTA VI
+            </p>
+
+            <div className="mt-4 space-y-3 text-xs leading-relaxed text-slate-300">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3.5">
+                <h3 className="font-black text-cyan-300 uppercase tracking-wider text-[11px]">
+                  1. How Digital Plot Placement Works
+                </h3>
+                <p className="mt-1">
+                  The island consists of 1,600 numbered 3D plots (#0001–#1600). When you tip on Ko-fi and include{" "}
+                  <code className="rounded bg-slate-800 px-1 text-amber-200">
+                    @yourname - Plot #XXXX
+                  </code>{" "}
+                  in your message, our webhook automatically builds your 3D property on that plot:
+                </p>
+                <ul className="mt-1.5 list-disc pl-4 space-y-0.5 text-slate-300">
+                  <li>
+                    <strong>$1 – $4:</strong> Beach Bungalow
+                  </li>
+                  <li>
+                    <strong>$5 – $9:</strong> Art Deco Pool Villa (plus #0001 Founder Special)
+                  </li>
+                  <li>
+                    <strong>$10+:</strong> Neon Glass Skyscraper with Helipad
+                  </li>
+                </ul>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3.5">
+                <h3 className="font-black text-emerald-300 uppercase tracking-wider text-[11px]">
+                  2. Funding Milestones
+                </h3>
+                <p className="mt-1">
+                  Every contribution goes toward our creator gear goal:{" "}
+                  <strong>$100</strong> (First District), <strong>$300</strong> (Halfway),{" "}
+                  <strong className="text-amber-300">
+                    $650 (Xbox Series X + GTA VI Unlocked)
+                  </strong>
+                  , and <strong>$1,600</strong> (100% Complete Island).
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3.5">
+                <h3 className="font-black text-pink-300 uppercase tracking-wider text-[11px]">
+                  3. Terms, Moderation & Refund Policy
+                </h3>
+                <ul className="mt-1 list-disc pl-4 space-y-1 text-slate-300">
+                  <li>
+                    <strong>Voluntary Creator Support:</strong> Payments made via Ko-fi are voluntary tips supporting content creation. 3D plots are cosmetic community acknowledgments and carry no monetary, ownership, or NFT value.
+                  </li>
+                  <li>
+                    <strong>Non-Refundable:</strong> Because digital plot allocation and 3D rendering are automated immediately upon payment, contributions are final and non-refundable.
+                  </li>
+                  <li>
+                    <strong>Content Moderation:</strong> Usernames or messages containing hate speech, slurs, harassment, or spam links will be masked or renamed while keeping your building active on the map. If you forgot your plot number at checkout, contact us with your Ko-fi receipt and we will assign an available plot.
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowTermsModal(false)}
+              className="mt-5 w-full rounded-xl bg-slate-800 py-2.5 text-xs font-black text-white hover:bg-slate-700 transition"
+            >
+              Got It
             </button>
           </div>
         </div>

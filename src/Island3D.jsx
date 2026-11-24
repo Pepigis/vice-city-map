@@ -18,6 +18,7 @@ const COLS = 40;
 const ROWS = 40;
 const TOTAL_PLOTS = COLS * ROWS;
 const TILE_STEP = 1.12;
+const DEFAULT_VIP_PLOTS = {};
 
 export function plotToWorld(plotNum) {
   const idx = plotNum - 1;
@@ -31,18 +32,20 @@ export function plotToWorld(plotNum) {
   };
 }
 
-// 1. Otexturovaná mřížka 1 600 parcel (InstancedMesh v 60 FPS)
+// 1. Otexturovaná mřížka 1 600 parcel (InstancedMesh optimalizovaný i pro mobily)
 function PlotsInstancedGrid({
   donorMap,
   selectedPlot,
   hoveredPlot,
-  vipPlots,
+  vipPlots = DEFAULT_VIP_PLOTS,
   theme,
   plotTexture,
+  isMobile,
   onSelectPlot,
   onHoverPlot,
 }) {
   const meshRef = useRef(null);
+  const lastHoveredRef = useRef(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const color = useMemo(() => new THREE.Color(), []);
 
@@ -50,16 +53,23 @@ function PlotsInstancedGrid({
     const mesh = meshRef.current;
     if (!mesh) return;
 
+    // Zajistí existenci bufferu barev hned při prvním vykreslení
+    if (!mesh.instanceColor) {
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(
+        new Float32Array(TOTAL_PLOTS * 3),
+        3
+      );
+    }
+
     for (let i = 0; i < TOTAL_PLOTS; i++) {
       const plotNum = i + 1;
       const { col, row, x, z } = plotToWorld(plotNum);
       const isAvenue = col === 19 || col === 20 || row === 19 || row === 20;
       const donor = donorMap.get(plotNum);
       const isSelected = selectedPlot === plotNum;
-      const isHovered = hoveredPlot === plotNum;
+      const isHovered = !isMobile && hoveredPlot === plotNum;
       const isVip = Boolean(vipPlots[plotNum]);
 
-      // Silniční parcely jsou lehce zapuštěné pod souvislý asfaltový bulvár
       dummy.position.set(x, isAvenue ? 0.01 : 0.07, z);
       dummy.scale.set(1, isAvenue ? 0.25 : 1, 1);
       dummy.updateMatrix();
@@ -76,20 +86,20 @@ function PlotsInstancedGrid({
       } else if (isVip) {
         color.set("#F472B6");
       } else {
-        color.set("#FFFFFF"); // Nechá vyniknout texturu parcely
+        color.set("#FFFFFF");
       }
       mesh.setColorAt(i, color);
     }
 
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [donorMap, dummy, color, hoveredPlot, selectedPlot, theme, vipPlots]);
+  }, [donorMap, dummy, color, hoveredPlot, isMobile, selectedPlot, theme, vipPlots]);
 
   return (
     <instancedMesh
       ref={meshRef}
       args={[null, null, TOTAL_PLOTS]}
-      receiveShadow
+      receiveShadow={!isMobile}
       onClick={(e) => {
         e.stopPropagation();
         if (e.delta > 4) return;
@@ -97,13 +107,29 @@ function PlotsInstancedGrid({
           onSelectPlot(e.instanceId + 1);
         }
       }}
-      onPointerMove={(e) => {
-        e.stopPropagation();
-        if (typeof e.instanceId === "number") {
-          onHoverPlot(e.instanceId + 1);
-        }
-      }}
-      onPointerOut={() => onHoverPlot(null)}
+      onPointerMove={
+        isMobile
+          ? undefined
+          : (e) => {
+              e.stopPropagation();
+              const nextPlot =
+                typeof e.instanceId === "number" ? e.instanceId + 1 : null;
+              if (nextPlot !== lastHoveredRef.current) {
+                lastHoveredRef.current = nextPlot;
+                onHoverPlot(nextPlot);
+              }
+            }
+      }
+      onPointerOut={
+        isMobile
+          ? undefined
+          : () => {
+              if (lastHoveredRef.current !== null) {
+                lastHoveredRef.current = null;
+                onHoverPlot(null);
+              }
+            }
+      }
     >
       <boxGeometry args={[1.06, 0.14, 1.06]} />
       <meshStandardMaterial map={plotTexture} roughness={0.75} metalness={0.1} />
@@ -120,6 +146,7 @@ function Building3D({
   isPreview = false,
   showLabel = false,
   isSelected = false,
+  castShadow = true,
 }) {
   const groupRef = useRef(null);
   const beaconRef = useRef(null);
@@ -155,16 +182,18 @@ function Building3D({
 
   return (
     <group ref={groupRef} position={[x, 0.14, z]}>
-      {/* $1 Plážový bungalov s dřevěnou verandou a taškovou střechou */}
+      {/* $1 Plážový bungalov */}
       {tier === "bungalow" && (
         <group>
-          {/* Dřevěná terasa */}
-          <mesh position={[0, 0.04, 0.08]} receiveShadow>
+          <mesh position={[0, 0.04, 0.08]} receiveShadow={castShadow}>
             <boxGeometry args={[0.88, 0.08, 0.92]} />
             <meshStandardMaterial color="#92400E" roughness={0.85} />
           </mesh>
-          {/* Hlavní stěny s okny a dveřmi */}
-          <mesh position={[0, 0.34, -0.02]} castShadow receiveShadow>
+          <mesh
+            position={[0, 0.34, -0.02]}
+            castShadow={castShadow}
+            receiveShadow={castShadow}
+          >
             <boxGeometry args={[0.74, 0.54, 0.68]} />
             <meshStandardMaterial
               map={textures.bungalow}
@@ -173,24 +202,29 @@ function Building3D({
               opacity={isPreview ? 0.88 : 1}
             />
           </mesh>
-          {/* Tašková střecha */}
-          <mesh position={[0, 0.78, -0.02]} rotation={[0, Math.PI / 4, 0]} castShadow>
+          <mesh
+            position={[0, 0.78, -0.02]}
+            rotation={[0, Math.PI / 4, 0]}
+            castShadow={castShadow}
+          >
             <coneGeometry args={[0.64, 0.36, 4]} />
             <meshStandardMaterial map={textures.roof} roughness={0.6} />
           </mesh>
         </group>
       )}
 
-      {/* $5 Art Deco Vila se střešním bazénem a zábradlím */}
+      {/* $5 Art Deco Vila se střešním bazénem */}
       {(tier === "villa" || tier === "founder") && (
         <group>
-          {/* Mramorový sokl */}
-          <mesh position={[0, 0.05, 0]} receiveShadow>
+          <mesh position={[0, 0.05, 0]} receiveShadow={castShadow}>
             <boxGeometry args={[0.96, 0.1, 0.96]} />
             <meshStandardMaterial color="#CBD5E1" />
           </mesh>
-          {/* Patrová vila s otexturovanou Art Deco fasádou */}
-          <mesh position={[0, 0.54, 0]} castShadow receiveShadow>
+          <mesh
+            position={[0, 0.54, 0]}
+            castShadow={castShadow}
+            receiveShadow={castShadow}
+          >
             <boxGeometry args={[0.86, 0.88, 0.86]} />
             <meshStandardMaterial
               map={isFounder ? textures.founderVilla : textures.villa}
@@ -200,8 +234,7 @@ function Building3D({
               opacity={isPreview ? 0.88 : 1}
             />
           </mesh>
-          {/* Střešní terasa a neonový lem */}
-          <mesh position={[0, 1.02, 0]} castShadow>
+          <mesh position={[0, 1.02, 0]} castShadow={castShadow}>
             <boxGeometry args={[0.94, 0.08, 0.94]} />
             <meshStandardMaterial
               color={isFounder ? "#F59E0B" : "#EC4899"}
@@ -209,7 +242,6 @@ function Building3D({
               emissiveIntensity={0.45}
             />
           </mesh>
-          {/* Tyrkysový bazén */}
           <mesh position={[0, 1.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[0.62, 0.62]} />
             <meshBasicMaterial color="#22D3EE" />
@@ -217,15 +249,18 @@ function Building3D({
         </group>
       )}
 
-      {/* $10+ Skleněný mrakodrap se stupňovitým penthouem a heliportem */}
+      {/* $10+ Skleněný mrakodrap */}
       {tier === "skyscraper" && (
         <group>
           {(() => {
             const h = amount >= 20 ? 3.5 : 2.7;
             return (
               <>
-                {/* Hlavní věž se skleněnou fasádou */}
-                <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+                <mesh
+                  position={[0, h / 2, 0]}
+                  castShadow={castShadow}
+                  receiveShadow={castShadow}
+                >
                   <boxGeometry args={[0.88, h, 0.88]} />
                   <meshStandardMaterial
                     map={textures.skyscraper}
@@ -235,8 +270,7 @@ function Building3D({
                     opacity={isPreview ? 0.88 : 1}
                   />
                 </mesh>
-                {/* Stupňovitý penthouse nahoře */}
-                <mesh position={[0, h + 0.16, 0]} castShadow>
+                <mesh position={[0, h + 0.16, 0]} castShadow={castShadow}>
                   <boxGeometry args={[0.64, 0.32, 0.64]} />
                   <meshStandardMaterial
                     map={textures.skyscraper}
@@ -244,12 +278,10 @@ function Building3D({
                     roughness={0.18}
                   />
                 </mesh>
-                {/* Heliport */}
                 <mesh position={[0, h + 0.33, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                   <ringGeometry args={[0.16, 0.25, 24]} />
                   <meshBasicMaterial color="#10B981" />
                 </mesh>
-                {/* Anténa a maják */}
                 <mesh position={[0, h + 0.48, 0]}>
                   <cylinderGeometry args={[0.015, 0.02, 0.3, 6]} />
                   <meshBasicMaterial color="#E2E8F0" />
@@ -264,7 +296,6 @@ function Building3D({
         </group>
       )}
 
-      {/* Štítek se jménem (zIndexRange drží štítek vždy pod horním HUD panelem) */}
       {showLabel && (
         <Html position={[0, labelHeight, 0]} center zIndexRange={[10, 0]}>
           <div
@@ -283,7 +314,7 @@ function Building3D({
 }
 
 // 3. Klenuté 3D palmy kolem ostrova
-function PalmTrees3D() {
+function PalmTrees3D({ castShadow = true }) {
   const trees = useMemo(() => {
     const arr = [];
     const edge = (COLS / 2) * TILE_STEP + 0.85;
@@ -298,28 +329,29 @@ function PalmTrees3D() {
     <group>
       {trees.map(([tx, tz], idx) => (
         <group key={idx} position={[tx, 0.05, tz]} rotation={[0, idx * 0.9, 0]}>
-          {/* Kmen z více nakloněných segmentů */}
-          <mesh position={[0, 0.35, 0]} rotation={[0.08, 0, 0.06]} castShadow>
+          <mesh position={[0, 0.35, 0]} rotation={[0.08, 0, 0.06]} castShadow={castShadow}>
             <cylinderGeometry args={[0.08, 0.12, 0.7, 7]} />
             <meshStandardMaterial color="#78350F" roughness={0.9} />
           </mesh>
-          <mesh position={[0.06, 0.98, 0.05]} rotation={[0.16, 0, 0.12]} castShadow>
+          <mesh
+            position={[0.06, 0.98, 0.05]}
+            rotation={[0.16, 0, 0.12]}
+            castShadow={castShadow}
+          >
             <cylinderGeometry args={[0.055, 0.08, 0.68, 7]} />
             <meshStandardMaterial color="#92400E" roughness={0.9} />
           </mesh>
-          {/* Kokosy */}
           <mesh position={[0.1, 1.24, 0.08]}>
             <sphereGeometry args={[0.08, 8, 8]} />
             <meshStandardMaterial color="#451A03" />
           </mesh>
-          {/* Koruna palmových listů */}
           {[0, 1.05, 2.1, 3.15, 4.2, 5.25].map((rot, fIdx) => (
             <group
               key={fIdx}
               position={[0.1, 1.3, 0.08]}
               rotation={[0.45, rot, 0]}
             >
-              <mesh position={[0, 0, 0.42]} castShadow>
+              <mesh position={[0, 0, 0.42]} castShadow={castShadow}>
                 <boxGeometry args={[0.18, 0.03, 0.82]} />
                 <meshStandardMaterial color={fIdx % 2 === 0 ? "#10B981" : "#059669"} />
               </mesh>
@@ -332,7 +364,7 @@ function PalmTrees3D() {
 }
 
 // 4. Souvislé asfaltové bulváry + fontána + auta + jachty + animovaný oceán
-function LivingWorld3D({ theme, roadTex, plazaTex, waterTex }) {
+function LivingWorld3D({ theme, roadTex, plazaTex, waterTex, castShadow = true }) {
   const carsRef = useRef([]);
   const boatsRef = useRef([]);
   const fountainRingRef = useRef(null);
@@ -364,7 +396,6 @@ function LivingWorld3D({ theme, roadTex, plazaTex, waterTex }) {
     const t = clock.getElapsedTime();
     const limit = islandSpan / 2;
 
-    // Pomalý pohyb vln na oceánu
     if (waterTex) {
       waterTex.offset.x += delta * 0.025;
       waterTex.offset.y += delta * 0.015;
@@ -402,29 +433,33 @@ function LivingWorld3D({ theme, roadTex, plazaTex, waterTex }) {
 
   return (
     <group>
-      {/* Souvislý asfaltový bulvár Sever–Jih */}
-      <mesh position={[0, 0.055, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[TILE_STEP * 2.02, islandSpan]} />
-        <meshStandardMaterial map={roadTex} roughness={0.85} />
-      </mesh>
-
-      {/* Souvislý asfaltový bulvár Východ–Západ */}
       <mesh
-        position={[0, 0.057, 0]}
-        rotation={[-Math.PI / 2, 0, Math.PI / 2]}
-        receiveShadow
+        position={[0, 0.055, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow={castShadow}
       >
         <planeGeometry args={[TILE_STEP * 2.02, islandSpan]} />
         <meshStandardMaterial map={roadTex} roughness={0.85} />
       </mesh>
 
-      {/* Centrální dlážděné náměstí s přechody */}
-      <mesh position={[0, 0.062, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh
+        position={[0, 0.057, 0]}
+        rotation={[-Math.PI / 2, 0, Math.PI / 2]}
+        receiveShadow={castShadow}
+      >
+        <planeGeometry args={[TILE_STEP * 2.02, islandSpan]} />
+        <meshStandardMaterial map={roadTex} roughness={0.85} />
+      </mesh>
+
+      <mesh
+        position={[0, 0.062, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow={castShadow}
+      >
         <planeGeometry args={[TILE_STEP * 2.35, TILE_STEP * 2.35]} />
         <meshStandardMaterial map={plazaTex} roughness={0.7} />
       </mesh>
 
-      {/* Centrální neonová fontána */}
       <group position={[0, 0.09, 0]}>
         <mesh>
           <cylinderGeometry args={[0.92, 1.02, 0.16, 24]} />
@@ -444,7 +479,6 @@ function LivingWorld3D({ theme, roadTex, plazaTex, waterTex }) {
         </mesh>
       </group>
 
-      {/* 3D Auta */}
       {cars.map((c, idx) => (
         <group
           key={idx}
@@ -452,7 +486,7 @@ function LivingWorld3D({ theme, roadTex, plazaTex, waterTex }) {
             carsRef.current[idx] = el;
           }}
         >
-          <mesh castShadow>
+          <mesh castShadow={castShadow}>
             <boxGeometry args={[0.34, 0.15, 0.64]} />
             <meshStandardMaterial color={c.color} metalness={0.4} roughness={0.3} />
           </mesh>
@@ -469,7 +503,6 @@ function LivingWorld3D({ theme, roadTex, plazaTex, waterTex }) {
         </group>
       ))}
 
-      {/* 3D Jachty na oceánu */}
       {boats.map((b, idx) => (
         <group
           key={idx}
@@ -477,7 +510,7 @@ function LivingWorld3D({ theme, roadTex, plazaTex, waterTex }) {
             boatsRef.current[idx] = el;
           }}
         >
-          <mesh castShadow>
+          <mesh castShadow={castShadow}>
             <boxGeometry args={[0.58, 0.22, 1.65]} />
             <meshStandardMaterial color="#FFFFFF" roughness={0.3} />
           </mesh>
@@ -552,7 +585,7 @@ export default function Island3D({
   donorMap,
   selectedPlot,
   hoveredPlot,
-  vipPlots,
+  vipPlots = DEFAULT_VIP_PLOTS,
   theme,
   previewAmount,
   previewName,
@@ -562,7 +595,11 @@ export default function Island3D({
   onSelectPlot,
   onHoverPlot,
 }) {
-  // Generování a uvolňování všech procedurálních textur podle denní doby
+  const isMobile = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < 768 || navigator.maxTouchPoints > 0;
+  }, []);
+
   const textures = useMemo(() => {
     return {
       road: createAsphaltRoadTexture(),
@@ -591,8 +628,9 @@ export default function Island3D({
 
   return (
     <Canvas
-      shadows
-      dpr={[1, 2]}
+      shadows={!isMobile}
+      dpr={isMobile ? [1, 1.25] : [1, 2]}
+      gl={{ powerPreference: "high-performance", antialias: !isMobile }}
       camera={{ position: [0, 32, 36], fov: 44 }}
       className="h-full w-full"
     >
@@ -610,14 +648,14 @@ export default function Island3D({
               ? "#93C5FD"
               : "#FFFFFF"
         }
-        castShadow
+        castShadow={!isMobile}
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
       />
       <pointLight position={[0, 6, 0]} intensity={1.4} color="#EC4899" distance={35} />
 
       {/* Nekonečný oceán s animovanou texturou vln */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.25, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.25, 0]} receiveShadow={!isMobile}>
         <planeGeometry args={[280, 280]} />
         <meshStandardMaterial
           map={textures.water}
@@ -635,7 +673,7 @@ export default function Island3D({
       </mesh>
 
       {/* Písečný podklad ostrova */}
-      <mesh position={[0, -0.06, 0]} receiveShadow>
+      <mesh position={[0, -0.06, 0]} receiveShadow={!isMobile}>
         <boxGeometry args={[47.4, 0.24, 47.4]} />
         <meshStandardMaterial map={textures.sand} roughness={0.85} />
       </mesh>
@@ -648,6 +686,7 @@ export default function Island3D({
         vipPlots={vipPlots}
         theme={theme}
         plotTexture={textures.plot}
+        isMobile={isMobile}
         onSelectPlot={onSelectPlot}
         onHoverPlot={onHoverPlot}
       />
@@ -661,9 +700,10 @@ export default function Island3D({
           name={d.name}
           textures={textures}
           isSelected={selectedPlot === d.plot}
+          castShadow={!isMobile}
           showLabel={
             selectedPlot === d.plot ||
-            hoveredPlot === d.plot ||
+            (!isMobile && hoveredPlot === d.plot) ||
             activeDonors.length <= 15
           }
         />
@@ -682,16 +722,18 @@ export default function Island3D({
           textures={textures}
           isPreview
           isSelected
+          castShadow={!isMobile}
           showLabel
         />
       )}
 
-      <PalmTrees3D />
+      <PalmTrees3D castShadow={!isMobile} />
       <LivingWorld3D
         theme={theme}
         roadTex={textures.road}
         plazaTex={textures.plaza}
         waterTex={textures.water}
+        castShadow={!isMobile}
       />
 
       <CameraController
