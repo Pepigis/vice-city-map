@@ -34,10 +34,14 @@ export default async function handler(req, res) {
     return res.status(405).send("Method not allowed");
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = (process.env.SUPABASE_URL || "")
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/rest\/v1$/i, "");
+  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const kofiToken = (process.env.KOFI_VERIFICATION_TOKEN || "").trim();
 
-  if (!supabaseUrl || !serviceKey || !process.env.KOFI_VERIFICATION_TOKEN) {
+  if (!supabaseUrl || !serviceKey || !kofiToken) {
     console.error("Missing environment variables");
     return res.status(500).send("Server not configured");
   }
@@ -53,7 +57,7 @@ export default async function handler(req, res) {
 
     const event = JSON.parse(payload);
 
-    if (event.verification_token !== process.env.KOFI_VERIFICATION_TOKEN) {
+    if ((event.verification_token || "").trim() !== kofiToken) {
       console.error("Verification token mismatch");
       return res.status(401).send("Invalid token");
     }
