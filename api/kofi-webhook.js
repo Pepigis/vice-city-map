@@ -86,14 +86,20 @@ export default async function handler(req, res) {
       status: plot ? "active" : "needs_plot",
     };
 
+    const headers = {
+      "Content-Type": "application/json",
+      apikey: serviceKey,
+      Prefer: "return=minimal",
+    };
+
+    // Legacy JWT service_role keys require Authorization Bearer; new sb_secret_ keys use only apikey
+    if (serviceKey.startsWith("eyJ")) {
+      headers.Authorization = `Bearer ${serviceKey}`;
+    }
+
     const supabaseRes = await fetch(`${supabaseUrl}/rest/v1/donors`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: "return=minimal",
-      },
+      headers,
       body: JSON.stringify(row),
     });
 
@@ -105,7 +111,7 @@ export default async function handler(req, res) {
     if (!supabaseRes.ok) {
       const text = await supabaseRes.text();
       console.error("Supabase insert failed", supabaseRes.status, text);
-      return res.status(500).send("Database error");
+      return res.status(500).send(`Database error (${supabaseRes.status}): ${text}`);
     }
 
     console.log("Donation saved", { plot, handle, amount });
