@@ -57,7 +57,7 @@ const DEMO_DONORS = [
 const COLS = 40;
 const ROWS = 40;
 const TOTAL_PLOTS = COLS * ROWS;
-const XBOX_GOAL_USD = 650;
+const XBOX_GOAL_USD = 1224;
 const FINAL_GOAL_USD = 1600;
 const KOFI_URL = "https://ko-fi.com/vectorbra1n";
 
@@ -68,9 +68,9 @@ const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || "")
 const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
 
 const MILESTONES = [
-  { amount: 100, label: "$100" },
   { amount: 300, label: "$300" },
-  { amount: 650, label: "$650 Xbox + GTA VI", primary: true },
+  { amount: 750, label: "$750" },
+  { amount: 1224, label: "$1,224 Xbox + GTA VI", primary: true },
 ];
 
 const VIP_PLOTS = {
@@ -405,7 +405,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Ukazatel cíle s milníky ($100, $300, $650 Xbox + GTA VI, $1,600) */}
+        {/* Ukazatel cíle s milníky ($300, $750, $1,224 Xbox + GTA VI, $1,600) */}
         <div className="pointer-events-auto flex flex-1 max-w-lg flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
           <div className="flex items-center justify-between gap-2 text-xs font-extrabold">
             <span className="flex items-center gap-1 text-emerald-300">
@@ -420,7 +420,7 @@ export default function App() {
               <Gamepad2 className="h-3.5 w-3.5 text-amber-400" />
               {xboxUnlocked
                 ? "Xbox + GTA VI UNLOCKED!"
-                : `$650 Xbox + GTA VI (${xboxPct.toFixed(0)}%)`}
+                : `$1,224 Xbox + GTA VI (${xboxPct.toFixed(0)}%)`}
             </span>
           </div>
 
@@ -449,8 +449,8 @@ export default function App() {
 
           <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
             <span>
-              Milestones: $100 • $300 •{" "}
-              <strong className="text-amber-300">$650 Xbox</strong>
+              Milestones: $300 • $750 •{" "}
+              <strong className="text-amber-300">$1,224 Xbox</strong> • $1,600 (+Fees)
             </span>
             <span>
               {activeDonors.length} / {TOTAL_PLOTS.toLocaleString()} Built
@@ -918,11 +918,11 @@ export default function App() {
                 </h3>
                 <p className="mt-1">
                   Every contribution goes toward our creator gear goal:{" "}
-                  <strong>$100</strong> (First District), <strong>$300</strong> (Halfway),{" "}
+                  <strong>$300</strong> (First District), <strong>$750</strong> (Skyline),{" "}
                   <strong className="text-amber-300">
-                    $650 (Xbox Series X + GTA VI Unlocked)
+                    $1,224 (Xbox Series X + GTA VI Unlocked)
                   </strong>
-                  , and <strong>$1,600</strong> (100% Complete Island).
+                  , and <strong>$1,600</strong> (100% Complete Island + Payment Fees).
                 </p>
               </div>
 
