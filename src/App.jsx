@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Award,
   Check,
   Copy,
   Crown,
   DollarSign,
+  Download,
   ExternalLink,
   Eye,
+  EyeOff,
   Flame,
   Gamepad2,
   HelpCircle,
@@ -16,6 +19,7 @@ import {
   RotateCcw,
   Search,
   Share2,
+  Shuffle,
   Sparkles,
   Sun,
   Sunset,
@@ -99,6 +103,223 @@ function getTierLabel(amount, isFounder) {
   return "Beach Bungalow ($1)";
 }
 
+function drawRoundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// Generuje sdílecí PNG kartičku parcely přímo v prohlížeči (1080x1350)
+function generateDeedCardDataUrl({
+  plotNum,
+  handle,
+  amount,
+  district,
+  tierLabel,
+  message,
+  isOwned,
+  allDonors,
+}) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1350;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  // Pozadí ve stylu Vice City
+  const bg = ctx.createLinearGradient(0, 0, 1080, 1350);
+  bg.addColorStop(0, "#050816");
+  bg.addColorStop(0.5, "#1E1035");
+  bg.addColorStop(1, "#09152B");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 1080, 1350);
+
+  // Jemná neonová mřížka na pozadí
+  ctx.strokeStyle = "rgba(56, 189, 248, 0.08)";
+  ctx.lineWidth = 2;
+  for (let gx = 0; gx <= 1080; gx += 60) {
+    ctx.beginPath();
+    ctx.moveTo(gx, 0);
+    ctx.lineTo(gx, 1350);
+    ctx.stroke();
+  }
+  for (let gy = 0; gy <= 1350; gy += 60) {
+    ctx.beginPath();
+    ctx.moveTo(0, gy);
+    ctx.lineTo(1080, gy);
+    ctx.stroke();
+  }
+
+  // Hlavní rámeček certifikátu
+  const borderGrad = ctx.createLinearGradient(60, 60, 1020, 1290);
+  borderGrad.addColorStop(0, "#EC4899");
+  borderGrad.addColorStop(0.5, "#22D3EE");
+  borderGrad.addColorStop(1, "#10B981");
+
+  drawRoundedRect(ctx, 56, 56, 968, 1238, 44);
+  ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+  ctx.fill();
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = borderGrad;
+  ctx.stroke();
+
+  // Hlavička
+  ctx.fillStyle = "#22D3EE";
+  ctx.font = "900 28px system-ui, -apple-system, sans-serif";
+  ctx.fillText("BUILD VICE CITY • 3D ISLAND CHALLENGE", 110, 145);
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "900 66px system-ui, -apple-system, sans-serif";
+  ctx.fillText(isOwned ? "OFFICIAL PROPERTY DEED" : "PLOT RESERVATION PREVIEW", 110, 222);
+
+  // Odznak statusu
+  drawRoundedRect(ctx, 110, 255, 310, 52, 16);
+  ctx.fillStyle = isOwned ? "rgba(16, 185, 129, 0.2)" : "rgba(251, 191, 36, 0.2)";
+  ctx.fill();
+  ctx.fillStyle = isOwned ? "#6EE7B7" : "#FCD34D";
+  ctx.font = "800 24px system-ui, -apple-system, sans-serif";
+  ctx.fillText(
+    isOwned ? `VERIFIED BUILDER • $${amount}` : `PREVIEW TIER • $${amount}`,
+    132,
+    289
+  );
+
+  // Velké číslo parcely a majitel
+  ctx.fillStyle = "#94A3B8";
+  ctx.font = "700 26px system-ui, -apple-system, sans-serif";
+  ctx.fillText("PLOT NUMBER", 110, 385);
+
+  ctx.fillStyle = "#FBBF24";
+  ctx.font = "900 108px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(`#${String(plotNum).padStart(4, "0")}`, 106, 488);
+
+  ctx.fillStyle = "#94A3B8";
+  ctx.font = "700 26px system-ui, -apple-system, sans-serif";
+  ctx.fillText("OWNER / BUILDER", 110, 565);
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "900 54px system-ui, -apple-system, sans-serif";
+  const displayHandle = handle.length > 22 ? `${handle.slice(0, 21)}…` : handle;
+  ctx.fillText(displayHandle, 110, 628);
+
+  // Detaily čtvrti a budovy
+  drawRoundedRect(ctx, 110, 675, 480, 180, 26);
+  ctx.fillStyle = "rgba(2, 6, 23, 0.85)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = "#F472B6";
+  ctx.font = "800 22px system-ui, -apple-system, sans-serif";
+  ctx.fillText("DISTRICT", 140, 722);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "900 32px system-ui, -apple-system, sans-serif";
+  ctx.fillText(district, 140, 762);
+
+  ctx.fillStyle = "#38BDF8";
+  ctx.font = "800 22px system-ui, -apple-system, sans-serif";
+  ctx.fillText("STRUCTURE TIER", 140, 808);
+  ctx.fillStyle = "#E2E8F0";
+  ctx.font = "800 26px system-ui, -apple-system, sans-serif";
+  ctx.fillText(tierLabel, 140, 842);
+
+  // Mini-mapa ostrova 40x40 vpravo
+  const mapBoxX = 630;
+  const mapBoxY = 540;
+  const mapBoxSize = 330;
+  drawRoundedRect(ctx, mapBoxX, mapBoxY, mapBoxSize, mapBoxSize, 26);
+  ctx.fillStyle = "#020617";
+  ctx.fill();
+  ctx.strokeStyle = "#22D3EE";
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  const pad = 25;
+  const inner = mapBoxSize - pad * 2;
+  const cell = inner / COLS;
+
+  // Silnice křížem
+  ctx.fillStyle = "#334155";
+  ctx.fillRect(mapBoxX + pad + 19 * cell, mapBoxY + pad, cell * 2, inner);
+  ctx.fillRect(mapBoxX + pad, mapBoxY + pad + 19 * cell, inner, cell * 2);
+
+  // Všechny existující budovy
+  for (const d of allDonors) {
+    const r = Math.floor((d.plot - 1) / COLS);
+    const c = (d.plot - 1) % COLS;
+    ctx.fillStyle =
+      d.amount >= 10 ? "#10B981" : d.amount >= 5 ? "#EC4899" : "#38BDF8";
+    ctx.fillRect(
+      mapBoxX + pad + c * cell,
+      mapBoxY + pad + r * cell,
+      Math.max(cell, 5),
+      Math.max(cell, 5)
+    );
+  }
+
+  // Zaměřovač na vybranou parcelu
+  const targetRow = Math.floor((plotNum - 1) / COLS);
+  const targetCol = (plotNum - 1) % COLS;
+  const cx = mapBoxX + pad + (targetCol + 0.5) * cell;
+  const cy = mapBoxY + pad + (targetRow + 0.5) * cell;
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+  ctx.strokeStyle = "#FBBF24";
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fill();
+
+  ctx.fillStyle = "#22D3EE";
+  ctx.font = "800 20px system-ui, -apple-system, sans-serif";
+  ctx.fillText("ISLAND LOCATION (40×40)", mapBoxX + 34, mapBoxY + mapBoxSize + 36);
+
+  // Vzkaz dárce (pokud existuje)
+  if (message) {
+    drawRoundedRect(ctx, 110, 910, 850, 120, 22);
+    ctx.fillStyle = "rgba(2, 6, 23, 0.75)";
+    ctx.fill();
+    ctx.fillStyle = "#CBD5E1";
+    ctx.font = "italic 28px system-ui, -apple-system, sans-serif";
+    const cleanMsg = message.length > 56 ? `${message.slice(0, 55)}…` : message;
+    ctx.fillText(`“${cleanMsg}”`, 140, 980);
+  }
+
+  // Patička s odkazem na web
+  drawRoundedRect(ctx, 110, 1085, 850, 140, 28);
+  const footerGrad = ctx.createLinearGradient(110, 1085, 960, 1225);
+  footerGrad.addColorStop(0, "rgba(16, 185, 129, 0.18)");
+  footerGrad.addColorStop(1, "rgba(6, 182, 212, 0.18)");
+  ctx.fillStyle = footerGrad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(34, 211, 238, 0.45)";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = "#94A3B8";
+  ctx.font = "700 24px system-ui, -apple-system, sans-serif";
+  ctx.fillText("VISIT THIS 3D BUILDING LIVE AT:", 145, 1142);
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "900 34px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(`vectorbra1n.vercel.app/?plot=${plotNum}`, 145, 1192);
+
+  return canvas.toDataURL("image/png");
+}
+
 export default function App() {
   const audioCtxRef = useRef(null);
   const prevCountRef = useRef(null);
@@ -108,14 +329,22 @@ export default function App() {
   const [demoMode, setDemoMode] = useState(
     () => new URLSearchParams(window.location.search).get("demo") === "1"
   );
+  const [hudHidden, setHudHidden] = useState(
+    () => new URLSearchParams(window.location.search).get("clean") === "1"
+  );
+
   const [liveRows, setLiveRows] = useState(FALLBACK_DONORS);
-  const [loadingDonors, setLoadingDonors] = useState(Boolean(SUPABASE_URL && SUPABASE_ANON_KEY));
+  const [loadingDonors, setLoadingDonors] = useState(
+    Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
+  );
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlot, setSelectedPlot] = useState(1);
   const [hoveredPlot, setHoveredPlot] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showDeedModal, setShowDeedModal] = useState(false);
+  const [deedImageUrl, setDeedImageUrl] = useState("");
   const [showLeaderboard, setShowLeaderboard] = useState(true);
 
   const [focusSignal, setFocusSignal] = useState(0);
@@ -125,6 +354,7 @@ export default function App() {
   const [previewAmount, setPreviewAmount] = useState(1);
   const [copiedNote, setCopiedNote] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedCaption, setCopiedCaption] = useState(false);
 
   const playSfx = useCallback(
     (type) => {
@@ -176,6 +406,23 @@ export default function App() {
     },
     [soundOn]
   );
+
+  // Klávesová zkratka "H" pro skrytí/zobrazení HUD při natáčení videí
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if (e.key === "h" || e.key === "H") {
+        setHudHidden((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Načítání živých dárců ze Supabase + automatická kontrola nových staveb každých 30 s
   useEffect(() => {
@@ -252,6 +499,12 @@ export default function App() {
     return list;
   }, [rawSourceRows]);
 
+  // Nejnovější stavitel na mapě (pro živý banner nahoře)
+  const latestDonor = useMemo(() => {
+    if (activeDonors.length === 0) return null;
+    return activeDonors[activeDonors.length - 1];
+  }, [activeDonors]);
+
   const donorMap = useMemo(() => {
     const map = new Map();
     for (const d of activeDonors) {
@@ -266,7 +519,7 @@ export default function App() {
       .slice(0, 5);
   }, [activeDonors]);
 
-  // Celková vybraná částka (počítá i příspěvky, u kterých dárce zapomněl číslo parcely)
+  // Celková vybraná částka
   const totalRaised = useMemo(() => {
     return rawSourceRows.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
   }, [rawSourceRows]);
@@ -285,6 +538,27 @@ export default function App() {
     setSelectedPlot(plotNum);
     setFocusSignal((s) => s + 1);
     playSfx("select");
+  };
+
+  const handleJumpRandomFreePlot = () => {
+    if (donorMap.size >= TOTAL_PLOTS) return;
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const candidate = Math.floor(Math.random() * TOTAL_PLOTS) + 1;
+      const idx = candidate - 1;
+      const r = Math.floor(idx / COLS);
+      const c = idx % COLS;
+      const isRoad = c === 19 || c === 20 || r === 19 || r === 20;
+      if (!isRoad && !donorMap.has(candidate)) {
+        focusPlot(candidate);
+        return;
+      }
+    }
+    for (let p = 1; p <= TOTAL_PLOTS; p++) {
+      if (!donorMap.has(p)) {
+        focusPlot(p);
+        return;
+      }
+    }
   };
 
   useEffect(() => {
@@ -323,6 +597,54 @@ export default function App() {
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  const selectedDonor = donorMap.get(selectedPlot);
+  const selectedVip = VIP_PLOTS[selectedPlot];
+  const selectedDistrict = getDistrict(selectedPlot);
+  const selectedRow = Math.floor((selectedPlot - 1) / COLS);
+  const selectedCol = (selectedPlot - 1) % COLS;
+
+  const handleOpenDeedCard = () => {
+    const ownerHandle = selectedDonor ? selectedDonor.name : formattedHandle;
+    const ownerAmount = selectedDonor ? selectedDonor.amount : previewAmount;
+    const ownerMessage = selectedDonor ? selectedDonor.message : "";
+    const dataUrl = generateDeedCardDataUrl({
+      plotNum: selectedPlot,
+      handle: ownerHandle,
+      amount: ownerAmount,
+      district: selectedDistrict,
+      tierLabel: getTierLabel(ownerAmount, selectedPlot === 1),
+      message: ownerMessage,
+      isOwned: Boolean(selectedDonor),
+      allDonors: activeDonors,
+    });
+    setDeedImageUrl(dataUrl);
+    setShowDeedModal(true);
+    playSfx("select");
+  };
+
+  const handleDownloadDeed = () => {
+    if (!deedImageUrl) return;
+    const link = document.createElement("a");
+    link.href = deedImageUrl;
+    link.download = `vice-city-plot-${String(selectedPlot).padStart(4, "0")}.png`;
+    link.click();
+    playSfx("build");
+  };
+
+  const handleCopySocialCaption = () => {
+    const ownerHandle = selectedDonor ? selectedDonor.name : formattedHandle;
+    const caption = `I just claimed Plot #${String(selectedPlot).padStart(
+      4,
+      "0"
+    )} in ${selectedDistrict} (${ownerHandle}) on the live 3D Vice City island! 🌴🏙️ Check out my building: ${
+      window.location.origin
+    }/?plot=${selectedPlot}`;
+    navigator.clipboard?.writeText(caption);
+    setCopiedCaption(true);
+    playSfx("select");
+    setTimeout(() => setCopiedCaption(false), 2500);
+  };
+
   const kofiNoteText = `${formattedHandle} - Plot #${String(selectedPlot).padStart(
     4,
     "0"
@@ -356,12 +678,6 @@ export default function App() {
     focusPlot(row * COLS + col + 1);
   };
 
-  const selectedDonor = donorMap.get(selectedPlot);
-  const selectedVip = VIP_PLOTS[selectedPlot];
-  const selectedDistrict = getDistrict(selectedPlot);
-  const selectedRow = Math.floor((selectedPlot - 1) / COLS);
-  const selectedCol = (selectedPlot - 1) % COLS;
-
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-white select-none font-sans">
       {/* Plně 3D WebGL ostrov */}
@@ -384,377 +700,440 @@ export default function App() {
         onHoverPlot={setHoveredPlot}
       />
 
-      {/* Horní lišta s pokrokem a ovládáním */}
-      <header className="pointer-events-none absolute top-0 left-0 right-0 z-10 flex flex-wrap items-center justify-between gap-2 p-3 sm:p-4">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-cyan-400/30 bg-slate-900/90 px-3.5 py-2 shadow-2xl backdrop-blur-md">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-400 font-black text-slate-950 shadow-lg">
-            3D
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-black tracking-tight sm:text-base">
-                BUILD VICE CITY
-              </h1>
-              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300 border border-emerald-400/40">
-                {TOTAL_PLOTS.toLocaleString()} PLOTS
-              </span>
-            </div>
-            <p className="hidden text-[11px] text-slate-400 sm:block">
-              Drag to orbit 360° • Scroll to zoom • Click any plot
-            </p>
-          </div>
-        </div>
-
-        {/* Ukazatel cíle s milníky ($300, $750, $1,224 Xbox + GTA VI, $1,600) */}
-        <div className="pointer-events-auto flex flex-1 max-w-lg flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
-          <div className="flex items-center justify-between gap-2 text-xs font-extrabold">
-            <span className="flex items-center gap-1 text-emerald-300">
-              <DollarSign className="h-3.5 w-3.5" />
-              ${totalRaised.toLocaleString()} / ${FINAL_GOAL_USD.toLocaleString()}
-              {loadingDonors && (
-                <Loader2 className="ml-1 h-3 w-3 animate-spin text-cyan-400" />
-              )}
-            </span>
-
-            <span className="flex items-center gap-1 text-[11px] font-black text-amber-300">
-              <Gamepad2 className="h-3.5 w-3.5 text-amber-400" />
-              {xboxUnlocked
-                ? "Xbox + GTA VI UNLOCKED!"
-                : `$1,224 Xbox + GTA VI (${xboxPct.toFixed(0)}%)`}
-            </span>
-          </div>
-
-          {/* Progress bar se značkami milníků */}
-          <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-slate-800 border border-slate-700">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-pink-500 transition-all duration-500"
-              style={{ width: `${Math.max(finalPct, totalRaised > 0 ? 2 : 0)}%` }}
-            />
-            {MILESTONES.map((m) => {
-              const leftPct = (m.amount / FINAL_GOAL_USD) * 100;
-              return (
-                <div
-                  key={m.amount}
-                  title={m.label}
-                  style={{ left: `${leftPct}%` }}
-                  className={`absolute top-0 bottom-0 -translate-x-1/2 ${
-                    m.primary
-                      ? "w-0.5 bg-amber-300 shadow-[0_0_8px_#FBBF24]"
-                      : "w-px bg-slate-400/60"
-                  }`}
-                />
-              );
-            })}
-          </div>
-
-          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
-            <span>
-              Milestones: $300 • $750 •{" "}
-              <strong className="text-amber-300">$1,224 Xbox</strong> • $1,600 (+Fees)
-            </span>
-            <span>
-              {activeDonors.length} / {TOTAL_PLOTS.toLocaleString()} Built
-            </span>
-          </div>
-        </div>
-
-        {/* Vyhledávání + přepínače */}
-        <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
-          <form
-            onSubmit={handleSearch}
-            className="flex items-center rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 backdrop-blur-md"
-          >
-            <Search className="h-3.5 w-3.5 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Find @user or #420..."
-              className="w-24 bg-transparent px-2 text-xs text-white placeholder-slate-400 focus:outline-none sm:w-36"
-            />
-          </form>
-
-          {/* Zobrazí se pouze při spuštění s ?demo=1 */}
-          {demoMode && (
-            <button
-              onClick={() => {
-                playSfx("select");
-                setDemoMode(false);
-              }}
-              title="Exit secret demo mode"
-              className="flex items-center gap-1.5 rounded-xl border border-amber-400 bg-amber-400/20 px-2.5 py-2 text-xs font-bold text-amber-200 transition"
-            >
-              <Eye className="h-4 w-4" />
-              <span>Demo: ON</span>
-            </button>
-          )}
-
-          <button
-            onClick={cycleTheme}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 py-2 text-xs font-bold text-slate-200 hover:border-pink-400 transition"
-          >
-            {theme === "night" ? (
-              <>
-                <Moon className="h-4 w-4 text-cyan-300" />
-                <span className="hidden lg:inline">Night</span>
-              </>
-            ) : theme === "sunset" ? (
-              <>
-                <Sunset className="h-4 w-4 text-pink-400" />
-                <span className="hidden lg:inline">Sunset</span>
-              </>
-            ) : (
-              <>
-                <Sun className="h-4 w-4 text-amber-300" />
-                <span className="hidden lg:inline">Day</span>
-              </>
-            )}
-          </button>
-
-          <button
-            onClick={() => {
-              playSfx("select");
-              setResetSignal((r) => r + 1);
-            }}
-            title="Reset 3D camera"
-            className="rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-slate-200 hover:border-cyan-400 transition"
-          >
-            <RotateCcw className="h-4 w-4" />
-          </button>
-
-          <button
-            onClick={() => setSoundOn((s) => !s)}
-            className="rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-slate-200 hover:border-cyan-400 transition"
-          >
-            {soundOn ? (
-              <Volume2 className="h-4 w-4 text-emerald-400" />
-            ) : (
-              <VolumeX className="h-4 w-4 text-slate-500" />
-            )}
-          </button>
-        </div>
-      </header>
-
-      {/* Banner pro prvního dárce */}
-      {!demoMode && !loadingDonors && totalRaised === 0 && (
-        <div className="pointer-events-none absolute top-32 sm:top-22 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
-          <button
-            onClick={() => {
-              focusPlot(1);
-              setPreviewAmount(5);
-              setShowModal(true);
-            }}
-            className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-amber-300 bg-slate-900/95 px-3.5 py-1.5 text-[11px] sm:text-xs font-black text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.45)] hover:scale-105 transition"
-          >
-            <Crown className="h-4 w-4 shrink-0 text-amber-400" />
-            <span>FOUNDER SPECIAL: Claim #0001 for $1 & get a $5 Pool Villa!</span>
-          </button>
-        </div>
+      {/* Plovoucí tlačítko pro návrat UI při skrytém HUD (?clean=1 nebo klávesa H) */}
+      {hudHidden && (
+        <button
+          onClick={() => setHudHidden(false)}
+          title="Show HUD (or press H)"
+          className="fixed bottom-4 right-4 z-30 flex items-center gap-1.5 rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1.5 text-[11px] font-bold text-slate-300 backdrop-blur-md hover:border-cyan-400 hover:text-white transition"
+        >
+          <Eye className="h-3.5 w-3.5 text-cyan-400" />
+          <span>Show HUD (H)</span>
+        </button>
       )}
 
-      {/* Pravý HUD sloupec: GTA Radar + Top 5 stavitelů */}
-      <div className="pointer-events-none absolute top-36 right-3 sm:top-24 sm:right-4 z-10 flex flex-col items-end gap-2.5">
-        <div
-          onClick={handleRadarClick}
-          title="GTA Island Radar — Click anywhere to fly 3D camera"
-          className="pointer-events-auto relative h-24 w-24 sm:h-32 sm:w-32 cursor-crosshair overflow-hidden rounded-2xl border-2 border-cyan-400/60 bg-slate-950/90 p-1.5 shadow-[0_0_20px_rgba(6,182,212,0.3)] backdrop-blur-md"
-        >
-          <svg viewBox="0 0 40 40" className="h-full w-full">
-            <rect x="0" y="0" width="40" height="40" rx="2" fill="#0F172A" />
-            <rect x="19" y="0" width="2" height="40" fill="#334155" />
-            <rect x="0" y="19" width="40" height="2" fill="#334155" />
-            {activeDonors.map((d) => {
-              const r = Math.floor((d.plot - 1) / COLS);
-              const c = (d.plot - 1) % COLS;
-              const color =
-                d.amount >= 10 ? "#10B981" : d.amount >= 5 ? "#EC4899" : "#38BDF8";
-              return (
-                <rect key={d.plot} x={c} y={r} width="1.2" height="1.2" fill={color} />
-              );
-            })}
-            <circle cx="0.8" cy="0.8" r="1.4" fill="#FBBF24" />
-            <circle
-              cx={selectedCol + 0.5}
-              cy={selectedRow + 0.5}
-              r="1.6"
-              fill="none"
-              stroke="#FFFFFF"
-              strokeWidth="0.8"
-            />
-          </svg>
-          <div className="pointer-events-none absolute bottom-1 left-1.5 flex items-center gap-0.5 rounded bg-slate-950/80 px-1 text-[9px] font-black tracking-wider text-cyan-300">
-            <Navigation className="h-2.5 w-2.5" /> 3D RADAR
-          </div>
-        </div>
+      {!hudHidden && (
+        <>
+          {/* Horní lišta s pokrokem a ovládáním */}
+          <header className="pointer-events-none absolute top-0 left-0 right-0 z-10 flex flex-wrap items-center justify-between gap-2 p-3 sm:p-4">
+            <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-cyan-400/30 bg-slate-900/90 px-3.5 py-2 shadow-2xl backdrop-blur-md">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-400 font-black text-slate-950 shadow-lg">
+                3D
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-sm font-black tracking-tight sm:text-base">
+                    BUILD VICE CITY
+                  </h1>
+                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300 border border-emerald-400/40">
+                    {TOTAL_PLOTS.toLocaleString()} PLOTS
+                  </span>
+                </div>
+                <p className="hidden text-[11px] text-slate-400 sm:block">
+                  Drag to orbit 360° • Scroll to zoom • Click any plot
+                </p>
+              </div>
+            </div>
 
-        {topBuilders.length > 0 && (
-          <div className="pointer-events-auto w-44 sm:w-52 rounded-2xl border border-slate-700/80 bg-slate-900/90 p-2.5 shadow-xl backdrop-blur-md">
-            <div className="flex items-center justify-between text-[11px] font-black text-amber-300">
-              <span className="flex items-center gap-1">
-                <Trophy className="h-3.5 w-3.5" /> TOP BUILDERS
-              </span>
-              <button
-                onClick={() => setShowLeaderboard((s) => !s)}
-                className="text-[10px] text-slate-400 hover:text-white"
+            {/* Ukazatel cíle s milníky ($300, $750, $1,224 Xbox + GTA VI, $1,600) */}
+            <div className="pointer-events-auto flex flex-1 max-w-lg flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
+              <div className="flex items-center justify-between gap-2 text-xs font-extrabold">
+                <span className="flex items-center gap-1 text-emerald-300">
+                  <DollarSign className="h-3.5 w-3.5" />
+                  ${totalRaised.toLocaleString()} / ${FINAL_GOAL_USD.toLocaleString()}
+                  {loadingDonors && (
+                    <Loader2 className="ml-1 h-3 w-3 animate-spin text-cyan-400" />
+                  )}
+                </span>
+
+                <span className="flex items-center gap-1 text-[11px] font-black text-amber-300">
+                  <Gamepad2 className="h-3.5 w-3.5 text-amber-400" />
+                  {xboxUnlocked
+                    ? "Xbox + GTA VI UNLOCKED!"
+                    : `$1,224 Xbox + GTA VI (${xboxPct.toFixed(0)}%)`}
+                </span>
+              </div>
+
+              {/* Progress bar se značkami milníků */}
+              <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-slate-800 border border-slate-700">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-pink-500 transition-all duration-500"
+                  style={{ width: `${Math.max(finalPct, totalRaised > 0 ? 2 : 0)}%` }}
+                />
+                {MILESTONES.map((m) => {
+                  const leftPct = (m.amount / FINAL_GOAL_USD) * 100;
+                  return (
+                    <div
+                      key={m.amount}
+                      title={m.label}
+                      style={{ left: `${leftPct}%` }}
+                      className={`absolute top-0 bottom-0 -translate-x-1/2 ${
+                        m.primary
+                          ? "w-0.5 bg-amber-300 shadow-[0_0_8px_#FBBF24]"
+                          : "w-px bg-slate-400/60"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+                <span>
+                  Milestones: $300 • $750 •{" "}
+                  <strong className="text-amber-300">$1,224 Xbox</strong> • $1,600 (+Fees)
+                </span>
+                <span>
+                  {activeDonors.length} / {TOTAL_PLOTS.toLocaleString()} Built
+                </span>
+              </div>
+            </div>
+
+            {/* Vyhledávání + přepínače */}
+            <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
+              <form
+                onSubmit={handleSearch}
+                className="flex items-center rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 backdrop-blur-md"
               >
-                {showLeaderboard ? "Hide" : "Show"}
+                <Search className="h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Find @user or #420..."
+                  className="w-24 bg-transparent px-2 text-xs text-white placeholder-slate-400 focus:outline-none sm:w-36"
+                />
+              </form>
+
+              {demoMode && (
+                <button
+                  onClick={() => {
+                    playSfx("select");
+                    setDemoMode(false);
+                  }}
+                  title="Exit secret demo mode"
+                  className="flex items-center gap-1.5 rounded-xl border border-amber-400 bg-amber-400/20 px-2.5 py-2 text-xs font-bold text-amber-200 transition"
+                >
+                  <Eye className="h-4 w-4" />
+                  <span>Demo: ON</span>
+                </button>
+              )}
+
+              <button
+                onClick={cycleTheme}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 py-2 text-xs font-bold text-slate-200 hover:border-pink-400 transition"
+              >
+                {theme === "night" ? (
+                  <>
+                    <Moon className="h-4 w-4 text-cyan-300" />
+                    <span className="hidden lg:inline">Night</span>
+                  </>
+                ) : theme === "sunset" ? (
+                  <>
+                    <Sunset className="h-4 w-4 text-pink-400" />
+                    <span className="hidden lg:inline">Sunset</span>
+                  </>
+                ) : (
+                  <>
+                    <Sun className="h-4 w-4 text-amber-300" />
+                    <span className="hidden lg:inline">Day</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  playSfx("select");
+                  setResetSignal((r) => r + 1);
+                }}
+                title="Reset 3D camera"
+                className="rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-slate-200 hover:border-cyan-400 transition"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </button>
+
+              <button
+                onClick={() => setHudHidden(true)}
+                title="Hide UI for clean video recording (H)"
+                className="hidden sm:block rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-slate-200 hover:border-cyan-400 transition"
+              >
+                <EyeOff className="h-4 w-4" />
+              </button>
+
+              <button
+                onClick={() => setSoundOn((s) => !s)}
+                className="rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-slate-200 hover:border-cyan-400 transition"
+              >
+                {soundOn ? (
+                  <Volume2 className="h-4 w-4 text-emerald-400" />
+                ) : (
+                  <VolumeX className="h-4 w-4 text-slate-500" />
+                )}
               </button>
             </div>
-            {showLeaderboard && (
-              <div className="mt-1.5 space-y-1">
-                {topBuilders.map((b, i) => (
+          </header>
+
+          {/* Banner pro prvního dárce NEBO živý banner posledního dárce */}
+          {!demoMode && !loadingDonors && totalRaised === 0 ? (
+            <div className="pointer-events-none absolute top-32 sm:top-22 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
+              <button
+                onClick={() => {
+                  focusPlot(1);
+                  setPreviewAmount(5);
+                  setShowModal(true);
+                }}
+                className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-amber-300 bg-slate-900/95 px-3.5 py-1.5 text-[11px] sm:text-xs font-black text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.45)] hover:scale-105 transition"
+              >
+                <Crown className="h-4 w-4 shrink-0 text-amber-400" />
+                <span>FOUNDER SPECIAL: Claim #0001 for $1 & get a $5 Pool Villa!</span>
+              </button>
+            </div>
+          ) : (
+            latestDonor && (
+              <div className="pointer-events-none absolute top-32 sm:top-22 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
+                <button
+                  onClick={() => focusPlot(latestDonor.plot)}
+                  title="Click to fly 3D camera to latest building"
+                  className="pointer-events-auto flex items-center gap-2 rounded-full border border-emerald-400/50 bg-slate-900/90 px-3.5 py-1 text-[11px] font-bold text-slate-200 shadow-lg backdrop-blur-md hover:border-cyan-400 transition"
+                >
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-emerald-300 font-black">LATEST:</span>
+                  <span className="text-white font-extrabold">{latestDonor.name}</span>
+                  <span className="text-slate-400">
+                    built Plot #{String(latestDonor.plot).padStart(4, "0")} ($
+                    {latestDonor.amount})
+                  </span>
+                </button>
+              </div>
+            )
+          )}
+
+          {/* Pravý HUD sloupec: GTA Radar + Top 5 stavitelů */}
+          <div className="pointer-events-none absolute top-38 right-3 sm:top-24 sm:right-4 z-10 flex flex-col items-end gap-2.5">
+            <div
+              onClick={handleRadarClick}
+              title="GTA Island Radar — Click anywhere to fly 3D camera"
+              className="pointer-events-auto relative h-24 w-24 sm:h-32 sm:w-32 cursor-crosshair overflow-hidden rounded-2xl border-2 border-cyan-400/60 bg-slate-950/90 p-1.5 shadow-[0_0_20px_rgba(6,182,212,0.3)] backdrop-blur-md"
+            >
+              <svg viewBox="0 0 40 40" className="h-full w-full">
+                <rect x="0" y="0" width="40" height="40" rx="2" fill="#0F172A" />
+                <rect x="19" y="0" width="2" height="40" fill="#334155" />
+                <rect x="0" y="19" width="40" height="2" fill="#334155" />
+                {activeDonors.map((d) => {
+                  const r = Math.floor((d.plot - 1) / COLS);
+                  const c = (d.plot - 1) % COLS;
+                  const color =
+                    d.amount >= 10 ? "#10B981" : d.amount >= 5 ? "#EC4899" : "#38BDF8";
+                  return (
+                    <rect key={d.plot} x={c} y={r} width="1.2" height="1.2" fill={color} />
+                  );
+                })}
+                <circle cx="0.8" cy="0.8" r="1.4" fill="#FBBF24" />
+                <circle
+                  cx={selectedCol + 0.5}
+                  cy={selectedRow + 0.5}
+                  r="1.6"
+                  fill="none"
+                  stroke="#FFFFFF"
+                  strokeWidth="0.8"
+                />
+              </svg>
+              <div className="pointer-events-none absolute bottom-1 left-1.5 flex items-center gap-0.5 rounded bg-slate-950/80 px-1 text-[9px] font-black tracking-wider text-cyan-300">
+                <Navigation className="h-2.5 w-2.5" /> 3D RADAR
+              </div>
+            </div>
+
+            {topBuilders.length > 0 && (
+              <div className="pointer-events-auto w-44 sm:w-52 rounded-2xl border border-slate-700/80 bg-slate-900/90 p-2.5 shadow-xl backdrop-blur-md">
+                <div className="flex items-center justify-between text-[11px] font-black text-amber-300">
+                  <span className="flex items-center gap-1">
+                    <Trophy className="h-3.5 w-3.5" /> TOP BUILDERS
+                  </span>
                   <button
-                    key={b.plot}
-                    onClick={() => focusPlot(b.plot)}
-                    className="flex w-full items-center justify-between rounded-lg bg-slate-950/80 px-2 py-1 text-left text-[11px] hover:bg-slate-800 transition"
+                    onClick={() => setShowLeaderboard((s) => !s)}
+                    className="text-[10px] text-slate-400 hover:text-white"
                   >
-                    <span className="truncate font-bold text-slate-200">
-                      <span className="text-amber-400 mr-1">#{i + 1}</span>
-                      {b.name}
-                    </span>
-                    <span className="ml-1 shrink-0 font-mono font-bold text-emerald-400">
-                      ${b.amount}
-                    </span>
+                    {showLeaderboard ? "Hide" : "Show"}
                   </button>
-                ))}
+                </div>
+                {showLeaderboard && (
+                  <div className="mt-1.5 space-y-1">
+                    {topBuilders.map((b, i) => (
+                      <button
+                        key={b.plot}
+                        onClick={() => focusPlot(b.plot)}
+                        className="flex w-full items-center justify-between rounded-lg bg-slate-950/80 px-2 py-1 text-left text-[11px] hover:bg-slate-800 transition"
+                      >
+                        <span className="truncate font-bold text-slate-200">
+                          <span className="text-amber-400 mr-1">#{i + 1}</span>
+                          {b.name}
+                        </span>
+                        <span className="ml-1 shrink-0 font-mono font-bold text-emerald-400">
+                          ${b.amount}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-      </div>
 
-      {/* Spodní karta vybrané parcely + patička s legendou a Terms */}
-      <div className="pointer-events-none absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-10 flex flex-col items-start justify-between gap-2.5 sm:flex-row sm:items-end">
-        <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 sm:p-4 shadow-2xl backdrop-blur-md">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-mono text-xs font-black text-cyan-300">
-                PLOT #{String(selectedPlot).padStart(4, "0")}
-              </span>
-              <span className="flex items-center gap-1 rounded-lg bg-slate-800/70 px-2 py-1 text-[11px] font-semibold text-slate-300">
-                <MapPin className="h-3 w-3 text-pink-400" />
-                {selectedDistrict}
-              </span>
-            </div>
+          {/* Spodní karta vybrané parcely + patička s legendou a Terms */}
+          <div className="pointer-events-none absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-10 flex flex-col items-start justify-between gap-2.5 sm:flex-row sm:items-end">
+            <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 sm:p-4 shadow-2xl backdrop-blur-md">
+              <div className="flex items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded-lg bg-slate-800 px-2 py-1 font-mono text-xs font-black text-cyan-300">
+                    #{String(selectedPlot).padStart(4, "0")}
+                  </span>
+                  <span className="flex items-center gap-1 rounded-lg bg-slate-800/70 px-2 py-1 text-[11px] font-semibold text-slate-300">
+                    <MapPin className="h-3 w-3 text-pink-400" />
+                    {selectedDistrict}
+                  </span>
+                </div>
 
-            <button
-              onClick={handleSharePlot}
-              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2 py-1 text-[11px] font-bold text-slate-300 hover:border-cyan-400 hover:text-white transition"
-            >
-              {copiedLink ? (
-                <>
-                  <Check className="h-3 w-3 text-emerald-400" /> Copied
-                </>
-              ) : (
-                <>
-                  <Share2 className="h-3 w-3" /> Share
-                </>
-              )}
-            </button>
-          </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleJumpRandomFreePlot}
+                    title="Jump to a random open plot"
+                    className="rounded-lg border border-slate-700 bg-slate-800/80 p-1.5 text-slate-300 hover:border-amber-400 hover:text-amber-300 transition"
+                  >
+                    <Shuffle className="h-3.5 w-3.5" />
+                  </button>
 
-          {selectedVip && (
-            <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-pink-500/15 border border-pink-500/30 px-2.5 py-1 text-[11px] font-bold text-pink-300">
-              <Flame className="h-3.5 w-3.5 text-pink-400" />
-              VIP SPOT: {selectedVip.label}
-            </div>
-          )}
+                  <button
+                    onClick={handleOpenDeedCard}
+                    title="Generate shareable PNG Property Deed Card"
+                    className="flex items-center gap-1 rounded-lg border border-pink-500/40 bg-pink-500/15 px-2 py-1 text-[11px] font-bold text-pink-200 hover:border-pink-400 transition"
+                  >
+                    <Award className="h-3 w-3 text-pink-400" /> Deed
+                  </button>
 
-          {selectedDonor ? (
-            <div className="mt-2.5">
-              <div className="flex items-center justify-between">
-                <div className="text-lg font-black text-white">{selectedDonor.name}</div>
-                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-300">
-                  OWNED • ${selectedDonor.amount}
-                </span>
-              </div>
-              <div className="text-xs font-semibold text-pink-400">
-                {getTierLabel(selectedDonor.amount, selectedPlot === 1)}
-              </div>
-              {selectedDonor.message && (
-                <p className="mt-1.5 rounded-lg bg-slate-950/80 p-2 text-xs text-slate-300 border border-slate-800">
-                  “{selectedDonor.message}”
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="mt-2.5">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-1.5">
-                <span>Test-build in 3D on this plot:</span>
-                <span className="text-amber-300">AVAILABLE</span>
-              </div>
-
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={previewName}
-                  onChange={(e) => setPreviewName(e.target.value)}
-                  placeholder="Type your @username..."
-                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
-                />
-                <div className="flex rounded-lg border border-slate-700 bg-slate-950 p-0.5 text-[11px] font-black">
-                  {[1, 5, 10].map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => {
-                        setPreviewAmount(amt);
-                        playSfx("build");
-                      }}
-                      className={`rounded-md px-2 py-1 transition ${
-                        previewAmount === amt
-                          ? "bg-cyan-400 text-slate-950"
-                          : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      ${amt}
-                    </button>
-                  ))}
+                  <button
+                    onClick={handleSharePlot}
+                    className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2 py-1 text-[11px] font-bold text-slate-300 hover:border-cyan-400 hover:text-white transition"
+                  >
+                    {copiedLink ? (
+                      <>
+                        <Check className="h-3 w-3 text-emerald-400" /> Link
+                      </>
+                    ) : (
+                      <>
+                        <Share2 className="h-3 w-3" /> Share
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
+
+              {selectedVip && (
+                <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-pink-500/15 border border-pink-500/30 px-2.5 py-1 text-[11px] font-bold text-pink-300">
+                  <Flame className="h-3.5 w-3.5 text-pink-400" />
+                  VIP SPOT: {selectedVip.label}
+                </div>
+              )}
+
+              {selectedDonor ? (
+                <div className="mt-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-lg font-black text-white">{selectedDonor.name}</div>
+                    <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-300">
+                      OWNED • ${selectedDonor.amount}
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-pink-400">
+                    {getTierLabel(selectedDonor.amount, selectedPlot === 1)}
+                  </div>
+                  {selectedDonor.message && (
+                    <p className="mt-1.5 rounded-lg bg-slate-950/80 p-2 text-xs text-slate-300 border border-slate-800">
+                      “{selectedDonor.message}”
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-2.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-1.5">
+                    <span>Test-build in 3D on this plot:</span>
+                    <span className="text-amber-300">AVAILABLE</span>
+                  </div>
+
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={previewName}
+                      onChange={(e) => setPreviewName(e.target.value)}
+                      placeholder="Type your @username..."
+                      className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+                    />
+                    <div className="flex rounded-lg border border-slate-700 bg-slate-950 p-0.5 text-[11px] font-black">
+                      {[1, 5, 10].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => {
+                            setPreviewAmount(amt);
+                            playSfx("build");
+                          }}
+                          className={`rounded-md px-2 py-1 transition ${
+                            previewAmount === amt
+                              ? "bg-cyan-400 text-slate-950"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          ${amt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  if (selectedDonor) {
+                    handleJumpRandomFreePlot();
+                    return;
+                  }
+                  playSfx("build");
+                  setShowModal(true);
+                }}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-2.5 text-sm font-black text-slate-950 shadow-lg hover:brightness-110 transition"
+              >
+                <Sparkles className="h-4 w-4" />
+                {selectedDonor
+                  ? "Find Available Plot ($1)"
+                  : `Lock In Plot #${String(selectedPlot).padStart(4, "0")} ($${previewAmount})`}
+              </button>
             </div>
-          )}
 
-          <button
-            onClick={() => {
-              playSfx("build");
-              setShowModal(true);
-            }}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-2.5 text-sm font-black text-slate-950 shadow-lg hover:brightness-110 transition"
-          >
-            <Sparkles className="h-4 w-4" />
-            {selectedDonor
-              ? "Build Your Own Plot ($1)"
-              : `Lock In Plot #${String(selectedPlot).padStart(4, "0")} ($${previewAmount})`}
-          </button>
-        </div>
+            {/* Patička vpravo dole: Legenda + How it Works & Terms */}
+            <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end">
+              <div className="hidden items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-2.5 text-xs text-slate-300 backdrop-blur-md lg:flex">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded-sm bg-sky-400" /> $1 Bungalow
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded-sm bg-pink-500" /> $5 Pool Villa
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded-sm bg-emerald-400" /> $10+ Skyscraper
+                </span>
+              </div>
 
-        {/* Patička vpravo dole: Legenda + How it Works & Terms */}
-        <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end">
-          <div className="hidden items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-2.5 text-xs text-slate-300 backdrop-blur-md lg:flex">
-            <span className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded-sm bg-sky-400" /> $1 Bungalow
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded-sm bg-pink-500" /> $5 Pool Villa
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded-sm bg-emerald-400" /> $10+ Skyscraper
-            </span>
+              <button
+                onClick={() => {
+                  playSfx("select");
+                  setShowTermsModal(true);
+                }}
+                className="flex items-center gap-1.5 rounded-2xl border border-slate-700/80 bg-slate-900/90 px-3.5 py-2.5 text-xs font-bold text-slate-300 shadow-xl backdrop-blur-md hover:border-cyan-400 hover:text-white transition"
+              >
+                <HelpCircle className="h-3.5 w-3.5 text-cyan-400" />
+                <span>How it Works & Terms</span>
+              </button>
+            </div>
           </div>
-
-          <button
-            onClick={() => {
-              playSfx("select");
-              setShowTermsModal(true);
-            }}
-            className="flex items-center gap-1.5 rounded-2xl border border-slate-700/80 bg-slate-900/90 px-3.5 py-2.5 text-xs font-bold text-slate-300 shadow-xl backdrop-blur-md hover:border-cyan-400 hover:text-white transition"
-          >
-            <HelpCircle className="h-3.5 w-3.5 text-cyan-400" />
-            <span>How it Works & Terms</span>
-          </button>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Modální okno pro Ko-fi */}
       {showModal && (
@@ -865,6 +1244,60 @@ export default function App() {
               </button>
               .
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Modální okno: Sdílecí Deed karta parcely */}
+      {showDeedModal && deedImageUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-sm rounded-3xl border-2 border-pink-500/50 bg-slate-900 p-5 shadow-2xl">
+            <button
+              onClick={() => setShowDeedModal(false)}
+              className="absolute top-3.5 right-3.5 rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <h2 className="text-base font-black text-white flex items-center gap-1.5">
+              <Award className="h-4 w-4 text-pink-400" />
+              Plot #{String(selectedPlot).padStart(4, "0")} Deed Card
+            </h2>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Download or share your building card on TikTok, Instagram, or X!
+            </p>
+
+            <div className="mt-3 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950">
+              <img
+                src={deedImageUrl}
+                alt={`Plot #${selectedPlot} Deed`}
+                className="mx-auto max-h-[52vh] w-auto object-contain"
+              />
+            </div>
+
+            <div className="mt-3.5 grid grid-cols-2 gap-2">
+              <button
+                onClick={handleDownloadDeed}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-2.5 text-xs font-black text-slate-950 hover:brightness-110 transition"
+              >
+                <Download className="h-4 w-4" /> Save PNG
+              </button>
+
+              <button
+                onClick={handleCopySocialCaption}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 py-2.5 text-xs font-black text-white hover:border-pink-400 transition"
+              >
+                {copiedCaption ? (
+                  <>
+                    <Check className="h-4 w-4 text-emerald-400" /> Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4 text-pink-400" /> Copy Post
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
