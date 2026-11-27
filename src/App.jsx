@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowUp,
   Award,
   Check,
   Copy,
@@ -13,6 +14,7 @@ import {
   Gamepad2,
   HelpCircle,
   Loader2,
+  Map as MapIcon,
   MapPin,
   Moon,
   Navigation,
@@ -24,9 +26,11 @@ import {
   Sun,
   Sunset,
   Trophy,
+  User,
   Volume2,
   VolumeX,
   X,
+  Zap,
 } from "lucide-react";
 import Island3D from "./Island3D";
 
@@ -61,6 +65,7 @@ const DEMO_DONORS = [
 const COLS = 40;
 const ROWS = 40;
 const TOTAL_PLOTS = COLS * ROWS;
+const TILE_STEP = 1.12;
 const XBOX_GOAL_USD = 1224;
 const FINAL_GOAL_USD = 1600;
 const KOFI_URL = "https://ko-fi.com/vectorbra1n";
@@ -117,7 +122,6 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// Generuje sdílecí PNG kartičku parcely přímo v prohlížeči (1080x1350)
 function generateDeedCardDataUrl({
   plotNum,
   handle,
@@ -134,7 +138,6 @@ function generateDeedCardDataUrl({
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
 
-  // Pozadí ve stylu Vice City
   const bg = ctx.createLinearGradient(0, 0, 1080, 1350);
   bg.addColorStop(0, "#050816");
   bg.addColorStop(0.5, "#1E1035");
@@ -142,7 +145,6 @@ function generateDeedCardDataUrl({
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, 1080, 1350);
 
-  // Jemná neonová mřížka na pozadí
   ctx.strokeStyle = "rgba(56, 189, 248, 0.08)";
   ctx.lineWidth = 2;
   for (let gx = 0; gx <= 1080; gx += 60) {
@@ -158,7 +160,6 @@ function generateDeedCardDataUrl({
     ctx.stroke();
   }
 
-  // Hlavní rámeček certifikátu
   const borderGrad = ctx.createLinearGradient(60, 60, 1020, 1290);
   borderGrad.addColorStop(0, "#EC4899");
   borderGrad.addColorStop(0.5, "#22D3EE");
@@ -171,7 +172,6 @@ function generateDeedCardDataUrl({
   ctx.strokeStyle = borderGrad;
   ctx.stroke();
 
-  // Hlavička
   ctx.fillStyle = "#22D3EE";
   ctx.font = "900 28px system-ui, -apple-system, sans-serif";
   ctx.fillText("BUILD VICE CITY • 3D ISLAND CHALLENGE", 110, 145);
@@ -180,7 +180,6 @@ function generateDeedCardDataUrl({
   ctx.font = "900 66px system-ui, -apple-system, sans-serif";
   ctx.fillText(isOwned ? "OFFICIAL PROPERTY DEED" : "PLOT RESERVATION PREVIEW", 110, 222);
 
-  // Odznak statusu
   drawRoundedRect(ctx, 110, 255, 310, 52, 16);
   ctx.fillStyle = isOwned ? "rgba(16, 185, 129, 0.2)" : "rgba(251, 191, 36, 0.2)";
   ctx.fill();
@@ -192,7 +191,6 @@ function generateDeedCardDataUrl({
     289
   );
 
-  // Velké číslo parcely a majitel
   ctx.fillStyle = "#94A3B8";
   ctx.font = "700 26px system-ui, -apple-system, sans-serif";
   ctx.fillText("PLOT NUMBER", 110, 385);
@@ -210,7 +208,6 @@ function generateDeedCardDataUrl({
   const displayHandle = handle.length > 22 ? `${handle.slice(0, 21)}…` : handle;
   ctx.fillText(displayHandle, 110, 628);
 
-  // Detaily čtvrti a budovy
   drawRoundedRect(ctx, 110, 675, 480, 180, 26);
   ctx.fillStyle = "rgba(2, 6, 23, 0.85)";
   ctx.fill();
@@ -232,7 +229,6 @@ function generateDeedCardDataUrl({
   ctx.font = "800 26px system-ui, -apple-system, sans-serif";
   ctx.fillText(tierLabel, 140, 842);
 
-  // Mini-mapa ostrova 40x40 vpravo
   const mapBoxX = 630;
   const mapBoxY = 540;
   const mapBoxSize = 330;
@@ -247,12 +243,10 @@ function generateDeedCardDataUrl({
   const inner = mapBoxSize - pad * 2;
   const cell = inner / COLS;
 
-  // Silnice křížem
   ctx.fillStyle = "#334155";
   ctx.fillRect(mapBoxX + pad + 19 * cell, mapBoxY + pad, cell * 2, inner);
   ctx.fillRect(mapBoxX + pad, mapBoxY + pad + 19 * cell, inner, cell * 2);
 
-  // Všechny existující budovy
   for (const d of allDonors) {
     const r = Math.floor((d.plot - 1) / COLS);
     const c = (d.plot - 1) % COLS;
@@ -266,7 +260,6 @@ function generateDeedCardDataUrl({
     );
   }
 
-  // Zaměřovač na vybranou parcelu
   const targetRow = Math.floor((plotNum - 1) / COLS);
   const targetCol = (plotNum - 1) % COLS;
   const cx = mapBoxX + pad + (targetCol + 0.5) * cell;
@@ -287,7 +280,6 @@ function generateDeedCardDataUrl({
   ctx.font = "800 20px system-ui, -apple-system, sans-serif";
   ctx.fillText("ISLAND LOCATION (40×40)", mapBoxX + 34, mapBoxY + mapBoxSize + 36);
 
-  // Vzkaz dárce (pokud existuje)
   if (message) {
     drawRoundedRect(ctx, 110, 910, 850, 120, 22);
     ctx.fillStyle = "rgba(2, 6, 23, 0.75)";
@@ -298,7 +290,6 @@ function generateDeedCardDataUrl({
     ctx.fillText(`“${cleanMsg}”`, 140, 980);
   }
 
-  // Patička s odkazem na web
   drawRoundedRect(ctx, 110, 1085, 850, 140, 28);
   const footerGrad = ctx.createLinearGradient(110, 1085, 960, 1225);
   footerGrad.addColorStop(0, "rgba(16, 185, 129, 0.18)");
@@ -320,12 +311,96 @@ function generateDeedCardDataUrl({
   return canvas.toDataURL("image/png");
 }
 
+// Dotykový virtuální joystick pro ovládání postavy na mobilu
+function TouchJoystick({ onMove }) {
+  const baseRef = useRef(null);
+  const [knob, setKnob] = useState({ x: 0, y: 0 });
+  const activeTouchIdRef = useRef(null);
+
+  const updateFromClient = (clientX, clientY) => {
+    const el = baseRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const maxRadius = rect.width * 0.36;
+
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxRadius) {
+      dx = (dx / dist) * maxRadius;
+      dy = (dy / dist) * maxRadius;
+    }
+
+    setKnob({ x: dx, y: dy });
+    onMove(dx / maxRadius, -dy / maxRadius);
+  };
+
+  const resetStick = () => {
+    activeTouchIdRef.current = null;
+    setKnob({ x: 0, y: 0 });
+    onMove(0, 0);
+  };
+
+  return (
+    <div
+      ref={baseRef}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+        const t = e.changedTouches[0];
+        if (!t) return;
+        activeTouchIdRef.current = t.identifier;
+        updateFromClient(t.clientX, t.clientY);
+      }}
+      onTouchMove={(e) => {
+        e.stopPropagation();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches[i];
+          if (t.identifier === activeTouchIdRef.current) {
+            updateFromClient(t.clientX, t.clientY);
+            break;
+          }
+        }
+      }}
+      onTouchEnd={(e) => {
+        e.stopPropagation();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === activeTouchIdRef.current) {
+            resetStick();
+            break;
+          }
+        }
+      }}
+      onTouchCancel={resetStick}
+      className="relative h-28 w-28 rounded-full border-2 border-cyan-400/60 bg-slate-950/75 shadow-2xl backdrop-blur-md touch-none"
+    >
+      <div
+        style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }}
+        className="absolute top-1/2 left-1/2 -mt-5 -ml-5 h-10 w-10 rounded-full bg-gradient-to-br from-cyan-300 to-pink-500 shadow-[0_0_15px_rgba(34,211,238,0.8)]"
+      />
+    </div>
+  );
+}
+
 export default function App() {
   const audioCtxRef = useRef(null);
   const prevCountRef = useRef(null);
+  const playerInputRef = useRef({
+    moveX: 0,
+    moveY: 0,
+    sprint: false,
+    jump: false,
+  });
 
   const [theme, setTheme] = useState("night");
   const [soundOn, setSoundOn] = useState(true);
+  const [streetMode, setStreetMode] = useState(
+    () => new URLSearchParams(window.location.search).get("street") === "1"
+  );
+  const [playerPos, setPlayerPos] = useState({ x: 0, z: 3.6 });
+  const [touchSprint, setTouchSprint] = useState(false);
+
   const [demoMode, setDemoMode] = useState(
     () => new URLSearchParams(window.location.search).get("demo") === "1"
   );
@@ -407,7 +482,7 @@ export default function App() {
     [soundOn]
   );
 
-  // Klávesová zkratka "H" pro skrytí/zobrazení HUD při natáčení videí
+  // Klávesové zkratky: "H" = skrytí HUDu, "V" = přepnutí Street Mode / Map View
   useEffect(() => {
     const onKeyDown = (e) => {
       if (
@@ -418,11 +493,14 @@ export default function App() {
       }
       if (e.key === "h" || e.key === "H") {
         setHudHidden((prev) => !prev);
+      } else if (e.key === "v" || e.key === "V") {
+        setStreetMode((prev) => !prev);
+        playSfx("theme");
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [playSfx]);
 
   // Načítání živých dárců ze Supabase + automatická kontrola nových staveb každých 30 s
   useEffect(() => {
@@ -481,7 +559,6 @@ export default function App() {
 
   const rawSourceRows = demoMode ? DEMO_DONORS : liveRows;
 
-  // Dárci přiřazení ke konkrétní parcele (1–1600) pro vykreslení na 3D ostrově
   const activeDonors = useMemo(() => {
     const seen = new Set();
     const list = [];
@@ -499,7 +576,6 @@ export default function App() {
     return list;
   }, [rawSourceRows]);
 
-  // Nejnovější stavitel na mapě (pro živý banner nahoře)
   const latestDonor = useMemo(() => {
     if (activeDonors.length === 0) return null;
     return activeDonors[activeDonors.length - 1];
@@ -519,7 +595,6 @@ export default function App() {
       .slice(0, 5);
   }, [activeDonors]);
 
-  // Celková vybraná částka
   const totalRaised = useMemo(() => {
     return rawSourceRows.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
   }, [rawSourceRows]);
@@ -536,6 +611,9 @@ export default function App() {
 
   const focusPlot = (plotNum) => {
     setSelectedPlot(plotNum);
+    if (streetMode) {
+      setStreetMode(false);
+    }
     setFocusSignal((s) => s + 1);
     playSfx("select");
   };
@@ -602,6 +680,16 @@ export default function App() {
   const selectedDistrict = getDistrict(selectedPlot);
   const selectedRow = Math.floor((selectedPlot - 1) / COLS);
   const selectedCol = (selectedPlot - 1) % COLS;
+
+  // Souřadnice hráče pro tečku na mini-radaru
+  const playerRadarCol = Math.max(
+    0,
+    Math.min(COLS, playerPos.x / TILE_STEP + COLS / 2)
+  );
+  const playerRadarRow = Math.max(
+    0,
+    Math.min(ROWS, playerPos.z / TILE_STEP + ROWS / 2)
+  );
 
   const handleOpenDeedCard = () => {
     const ownerHandle = selectedDonor ? selectedDonor.name : formattedHandle;
@@ -680,7 +768,7 @@ export default function App() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-white select-none font-sans">
-      {/* Plně 3D WebGL ostrov */}
+      {/* Plně 3D WebGL ostrov + hratelná postava */}
       <Island3D
         activeDonors={activeDonors}
         donorMap={donorMap}
@@ -693,11 +781,14 @@ export default function App() {
         formattedHandle={formattedHandle}
         focusSignal={focusSignal}
         resetSignal={resetSignal}
+        streetMode={streetMode}
+        playerInputRef={playerInputRef}
         onSelectPlot={(plot) => {
           setSelectedPlot(plot);
-          playSfx("select");
+          if (!streetMode) playSfx("select");
         }}
         onHoverPlot={setHoveredPlot}
+        onPlayerPosChange={setPlayerPos}
       />
 
       {/* Plovoucí tlačítko pro návrat UI při skrytém HUD (?clean=1 nebo klávesa H) */}
@@ -716,7 +807,7 @@ export default function App() {
         <>
           {/* Horní lišta s pokrokem a ovládáním */}
           <header className="pointer-events-none absolute top-0 left-0 right-0 z-10 flex flex-wrap items-center justify-between gap-2 p-3 sm:p-4">
-            <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-cyan-400/30 bg-slate-900/90 px-3.5 py-2 shadow-2xl backdrop-blur-md">
+            <div className="pointer-events-auto flex items-center gap-2.5 rounded-2xl border border-cyan-400/30 bg-slate-900/90 px-3 py-2 shadow-2xl backdrop-blur-md">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-400 font-black text-slate-950 shadow-lg">
                 3D
               </div>
@@ -725,18 +816,46 @@ export default function App() {
                   <h1 className="text-sm font-black tracking-tight sm:text-base">
                     BUILD VICE CITY
                   </h1>
-                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300 border border-emerald-400/40">
+                  <span className="hidden sm:inline rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300 border border-emerald-400/40">
                     {TOTAL_PLOTS.toLocaleString()} PLOTS
                   </span>
                 </div>
-                <p className="hidden text-[11px] text-slate-400 sm:block">
-                  Drag to orbit 360° • Scroll to zoom • Click any plot
+                <p className="hidden text-[11px] text-slate-400 md:block">
+                  {streetMode
+                    ? "WASD to walk • Shift sprint • Space jump • Drag to look"
+                    : "Drag to orbit 360° • Scroll to zoom • Click any plot"}
                 </p>
               </div>
+
+              {/* Hlavní přepínač: Street Mode (3D postava) vs Map View */}
+              <button
+                onClick={() => {
+                  playSfx("theme");
+                  setStreetMode((prev) => !prev);
+                }}
+                title="Switch between 3D Street Walk and Bird's-Eye Map (V)"
+                className={`ml-1 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black shadow-lg transition ${
+                  streetMode
+                    ? "bg-gradient-to-r from-amber-400 to-pink-500 text-slate-950"
+                    : "bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-950 hover:brightness-110"
+                }`}
+              >
+                {streetMode ? (
+                  <>
+                    <MapIcon className="h-4 w-4" />
+                    <span>Map View</span>
+                  </>
+                ) : (
+                  <>
+                    <User className="h-4 w-4" />
+                    <span>Walk Island</span>
+                  </>
+                )}
+              </button>
             </div>
 
-            {/* Ukazatel cíle s milníky ($300, $750, $1,224 Xbox + GTA VI, $1,600) */}
-            <div className="pointer-events-auto flex flex-1 max-w-lg flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
+            {/* Ukazatel cíle s milníky */}
+            <div className="pointer-events-auto hidden md:flex flex-1 max-w-md flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
               <div className="flex items-center justify-between gap-2 text-xs font-extrabold">
                 <span className="flex items-center gap-1 text-emerald-300">
                   <DollarSign className="h-3.5 w-3.5" />
@@ -754,7 +873,6 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Progress bar se značkami milníků */}
               <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-slate-800 border border-slate-700">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-pink-500 transition-all duration-500"
@@ -780,7 +898,7 @@ export default function App() {
               <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
                 <span>
                   Milestones: $300 • $750 •{" "}
-                  <strong className="text-amber-300">$1,224 Xbox</strong> • $1,600 (+Fees)
+                  <strong className="text-amber-300">$1,224 Xbox</strong> • $1,600
                 </span>
                 <span>
                   {activeDonors.length} / {TOTAL_PLOTS.toLocaleString()} Built
@@ -790,19 +908,21 @@ export default function App() {
 
             {/* Vyhledávání + přepínače */}
             <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
-              <form
-                onSubmit={handleSearch}
-                className="flex items-center rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 backdrop-blur-md"
-              >
-                <Search className="h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Find @user or #420..."
-                  className="w-24 bg-transparent px-2 text-xs text-white placeholder-slate-400 focus:outline-none sm:w-36"
-                />
-              </form>
+              {!streetMode && (
+                <form
+                  onSubmit={handleSearch}
+                  className="flex items-center rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 backdrop-blur-md"
+                >
+                  <Search className="h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Find @user or #420..."
+                    className="w-24 bg-transparent px-2 text-xs text-white placeholder-slate-400 focus:outline-none sm:w-36"
+                  />
+                </form>
+              )}
 
               {demoMode && (
                 <button
@@ -814,7 +934,7 @@ export default function App() {
                   className="flex items-center gap-1.5 rounded-xl border border-amber-400 bg-amber-400/20 px-2.5 py-2 text-xs font-bold text-amber-200 transition"
                 >
                   <Eye className="h-4 w-4" />
-                  <span>Demo: ON</span>
+                  <span>Demo</span>
                 </button>
               )}
 
@@ -840,16 +960,18 @@ export default function App() {
                 )}
               </button>
 
-              <button
-                onClick={() => {
-                  playSfx("select");
-                  setResetSignal((r) => r + 1);
-                }}
-                title="Reset 3D camera"
-                className="rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-slate-200 hover:border-cyan-400 transition"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
+              {!streetMode && (
+                <button
+                  onClick={() => {
+                    playSfx("select");
+                    setResetSignal((r) => r + 1);
+                  }}
+                  title="Reset 3D camera"
+                  className="rounded-xl border border-slate-700 bg-slate-900/90 p-2 text-slate-200 hover:border-cyan-400 transition"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+              )}
 
               <button
                 onClick={() => setHudHidden(true)}
@@ -872,43 +994,44 @@ export default function App() {
             </div>
           </header>
 
-          {/* Banner pro prvního dárce NEBO živý banner posledního dárce */}
-          {!demoMode && !loadingDonors && totalRaised === 0 ? (
-            <div className="pointer-events-none absolute top-32 sm:top-22 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
-              <button
-                onClick={() => {
-                  focusPlot(1);
-                  setPreviewAmount(5);
-                  setShowModal(true);
-                }}
-                className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-amber-300 bg-slate-900/95 px-3.5 py-1.5 text-[11px] sm:text-xs font-black text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.45)] hover:scale-105 transition"
-              >
-                <Crown className="h-4 w-4 shrink-0 text-amber-400" />
-                <span>FOUNDER SPECIAL: Claim #0001 for $1 & get a $5 Pool Villa!</span>
-              </button>
-            </div>
-          ) : (
-            latestDonor && (
-              <div className="pointer-events-none absolute top-32 sm:top-22 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
+          {/* Banner pro prvního dárce NEBO živý banner posledního dárce (jen v Map View) */}
+          {!streetMode &&
+            (!demoMode && !loadingDonors && totalRaised === 0 ? (
+              <div className="pointer-events-none absolute top-20 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
                 <button
-                  onClick={() => focusPlot(latestDonor.plot)}
-                  title="Click to fly 3D camera to latest building"
-                  className="pointer-events-auto flex items-center gap-2 rounded-full border border-emerald-400/50 bg-slate-900/90 px-3.5 py-1 text-[11px] font-bold text-slate-200 shadow-lg backdrop-blur-md hover:border-cyan-400 transition"
+                  onClick={() => {
+                    focusPlot(1);
+                    setPreviewAmount(5);
+                    setShowModal(true);
+                  }}
+                  className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-amber-300 bg-slate-900/95 px-3.5 py-1.5 text-[11px] sm:text-xs font-black text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.45)] hover:scale-105 transition"
                 >
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-emerald-300 font-black">LATEST:</span>
-                  <span className="text-white font-extrabold">{latestDonor.name}</span>
-                  <span className="text-slate-400">
-                    built Plot #{String(latestDonor.plot).padStart(4, "0")} ($
-                    {latestDonor.amount})
-                  </span>
+                  <Crown className="h-4 w-4 shrink-0 text-amber-400" />
+                  <span>FOUNDER SPECIAL: Claim #0001 for $1 & get a $5 Pool Villa!</span>
                 </button>
               </div>
-            )
-          )}
+            ) : (
+              latestDonor && (
+                <div className="pointer-events-none absolute top-20 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
+                  <button
+                    onClick={() => focusPlot(latestDonor.plot)}
+                    title="Click to fly 3D camera to latest building"
+                    className="pointer-events-auto flex items-center gap-2 rounded-full border border-emerald-400/50 bg-slate-900/90 px-3.5 py-1 text-[11px] font-bold text-slate-200 shadow-lg backdrop-blur-md hover:border-cyan-400 transition"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-emerald-300 font-black">LATEST:</span>
+                    <span className="text-white font-extrabold">{latestDonor.name}</span>
+                    <span className="text-slate-400">
+                      Plot #{String(latestDonor.plot).padStart(4, "0")} ($
+                      {latestDonor.amount})
+                    </span>
+                  </button>
+                </div>
+              )
+            ))}
 
-          {/* Pravý HUD sloupec: GTA Radar + Top 5 stavitelů */}
-          <div className="pointer-events-none absolute top-38 right-3 sm:top-24 sm:right-4 z-10 flex flex-col items-end gap-2.5">
+          {/* Pravý HUD sloupec: GTA Radar (se živou polohou postavy) + Top 5 stavitelů */}
+          <div className="pointer-events-none absolute top-24 right-3 sm:right-4 z-10 flex flex-col items-end gap-2.5">
             <div
               onClick={handleRadarClick}
               title="GTA Island Radar — Click anywhere to fly 3D camera"
@@ -936,13 +1059,25 @@ export default function App() {
                   stroke="#FFFFFF"
                   strokeWidth="0.8"
                 />
+                {/* Živá ikona hráče na mini-mapě */}
+                {streetMode && (
+                  <circle
+                    cx={playerRadarCol}
+                    cy={playerRadarRow}
+                    r="1.7"
+                    fill="#22D3EE"
+                    stroke="#FFFFFF"
+                    strokeWidth="0.7"
+                  />
+                )}
               </svg>
               <div className="pointer-events-none absolute bottom-1 left-1.5 flex items-center gap-0.5 rounded bg-slate-950/80 px-1 text-[9px] font-black tracking-wider text-cyan-300">
-                <Navigation className="h-2.5 w-2.5" /> 3D RADAR
+                <Navigation className="h-2.5 w-2.5" />{" "}
+                {streetMode ? "YOU" : "3D RADAR"}
               </div>
             </div>
 
-            {topBuilders.length > 0 && (
+            {!streetMode && topBuilders.length > 0 && (
               <div className="pointer-events-auto w-44 sm:w-52 rounded-2xl border border-slate-700/80 bg-slate-900/90 p-2.5 shadow-xl backdrop-blur-md">
                 <div className="flex items-center justify-between text-[11px] font-black text-amber-300">
                   <span className="flex items-center gap-1">
@@ -978,160 +1113,242 @@ export default function App() {
             )}
           </div>
 
-          {/* Spodní karta vybrané parcely + patička s legendou a Terms */}
-          <div className="pointer-events-none absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-10 flex flex-col items-start justify-between gap-2.5 sm:flex-row sm:items-end">
-            <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 sm:p-4 shadow-2xl backdrop-blur-md">
-              <div className="flex items-center justify-between gap-1.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="rounded-lg bg-slate-800 px-2 py-1 font-mono text-xs font-black text-cyan-300">
-                    #{String(selectedPlot).padStart(4, "0")}
-                  </span>
-                  <span className="flex items-center gap-1 rounded-lg bg-slate-800/70 px-2 py-1 text-[11px] font-semibold text-slate-300">
-                    <MapPin className="h-3 w-3 text-pink-400" />
-                    {selectedDistrict}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={handleJumpRandomFreePlot}
-                    title="Jump to a random open plot"
-                    className="rounded-lg border border-slate-700 bg-slate-800/80 p-1.5 text-slate-300 hover:border-amber-400 hover:text-amber-300 transition"
-                  >
-                    <Shuffle className="h-3.5 w-3.5" />
-                  </button>
-
-                  <button
-                    onClick={handleOpenDeedCard}
-                    title="Generate shareable PNG Property Deed Card"
-                    className="flex items-center gap-1 rounded-lg border border-pink-500/40 bg-pink-500/15 px-2 py-1 text-[11px] font-bold text-pink-200 hover:border-pink-400 transition"
-                  >
-                    <Award className="h-3 w-3 text-pink-400" /> Deed
-                  </button>
-
-                  <button
-                    onClick={handleSharePlot}
-                    className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2 py-1 text-[11px] font-bold text-slate-300 hover:border-cyan-400 hover:text-white transition"
-                  >
-                    {copiedLink ? (
-                      <>
-                        <Check className="h-3 w-3 text-emerald-400" /> Link
-                      </>
-                    ) : (
-                      <>
-                        <Share2 className="h-3 w-3" /> Share
-                      </>
-                    )}
-                  </button>
-                </div>
+          {/* Ovládání pro mobil + kompaktní skener parcely ve Street Mode */}
+          {streetMode ? (
+            <>
+              {/* Dotykový joystick vlevo dole (zobrazí se na telefonech/tabletech) */}
+              <div className="pointer-events-auto fixed bottom-28 left-4 z-20 md:hidden">
+                <TouchJoystick
+                  onMove={(mx, my) => {
+                    playerInputRef.current.moveX = mx;
+                    playerInputRef.current.moveY = my;
+                  }}
+                />
               </div>
 
-              {selectedVip && (
-                <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-pink-500/15 border border-pink-500/30 px-2.5 py-1 text-[11px] font-bold text-pink-300">
-                  <Flame className="h-3.5 w-3.5 text-pink-400" />
-                  VIP SPOT: {selectedVip.label}
-                </div>
-              )}
+              {/* Tlačítka Skok + Sprint vpravo dole (pro telefony/tablety) */}
+              <div className="pointer-events-auto fixed bottom-28 right-4 z-20 flex flex-col gap-2.5 md:hidden">
+                <button
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    playerInputRef.current.jump = true;
+                  }}
+                  className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-400 bg-slate-950/85 text-emerald-300 shadow-xl active:scale-95 touch-none"
+                >
+                  <ArrowUp className="h-6 w-6" />
+                </button>
+                <button
+                  onClick={() => {
+                    const next = !touchSprint;
+                    setTouchSprint(next);
+                    playerInputRef.current.sprint = next;
+                  }}
+                  className={`flex h-12 w-14 items-center justify-center rounded-2xl border text-[11px] font-black shadow-xl touch-none ${
+                    touchSprint
+                      ? "border-amber-400 bg-amber-400 text-slate-950"
+                      : "border-slate-700 bg-slate-950/85 text-slate-300"
+                  }`}
+                >
+                  <Zap className="h-4 w-4" />
+                </button>
+              </div>
 
-              {selectedDonor ? (
-                <div className="mt-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="text-lg font-black text-white">{selectedDonor.name}</div>
-                    <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-300">
-                      OWNED • ${selectedDonor.amount}
-                    </span>
-                  </div>
-                  <div className="text-xs font-semibold text-pink-400">
-                    {getTierLabel(selectedDonor.amount, selectedPlot === 1)}
-                  </div>
-                  {selectedDonor.message && (
-                    <p className="mt-1.5 rounded-lg bg-slate-950/80 p-2 text-xs text-slate-300 border border-slate-800">
-                      “{selectedDonor.message}”
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="mt-2.5">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-1.5">
-                    <span>Test-build in 3D on this plot:</span>
-                    <span className="text-amber-300">AVAILABLE</span>
-                  </div>
-
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      value={previewName}
-                      onChange={(e) => setPreviewName(e.target.value)}
-                      placeholder="Type your @username..."
-                      className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
-                    />
-                    <div className="flex rounded-lg border border-slate-700 bg-slate-950 p-0.5 text-[11px] font-black">
-                      {[1, 5, 10].map((amt) => (
-                        <button
-                          key={amt}
-                          type="button"
-                          onClick={() => {
-                            setPreviewAmount(amt);
-                            playSfx("build");
-                          }}
-                          className={`rounded-md px-2 py-1 transition ${
-                            previewAmount === amt
-                              ? "bg-cyan-400 text-slate-950"
-                              : "text-slate-400 hover:text-white"
-                          }`}
-                        >
-                          ${amt}
-                        </button>
-                      ))}
+              {/* Kompaktní lišta parcely před hráčem */}
+              <div className="pointer-events-none fixed bottom-3 left-3 right-3 z-10 flex justify-center">
+                <div className="pointer-events-auto flex w-full max-w-lg items-center justify-between gap-2 rounded-2xl border border-cyan-400/40 bg-slate-900/92 px-3.5 py-2.5 shadow-2xl backdrop-blur-md">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="rounded bg-slate-800 px-2 py-0.5 font-mono text-xs font-black text-cyan-300">
+                        #{String(selectedPlot).padStart(4, "0")}
+                      </span>
+                      <span className="truncate text-xs font-bold text-slate-300">
+                        {selectedDistrict}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 truncate text-xs font-extrabold text-white">
+                      {selectedDonor
+                        ? `${selectedDonor.name} • $${selectedDonor.amount}`
+                        : "Open Plot — Walk up & claim!"}
                     </div>
                   </div>
+
+                  {!selectedDonor ? (
+                    <button
+                      onClick={() => {
+                        playSfx("build");
+                        setShowModal(true);
+                      }}
+                      className="shrink-0 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-3.5 py-2 text-xs font-black text-slate-950 shadow-lg hover:brightness-110 transition"
+                    >
+                      Claim ($1+)
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleOpenDeedCard}
+                      className="shrink-0 rounded-xl border border-pink-400/50 bg-pink-500/20 px-3 py-2 text-xs font-black text-pink-200"
+                    >
+                      Deed
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
+            </>
+          ) : (
+            /* Spodní karta vybrané parcely + patička v Map View */
+            <div className="pointer-events-none absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-10 flex flex-col items-start justify-between gap-2.5 sm:flex-row sm:items-end">
+              <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 sm:p-4 shadow-2xl backdrop-blur-md">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="rounded-lg bg-slate-800 px-2 py-1 font-mono text-xs font-black text-cyan-300">
+                      #{String(selectedPlot).padStart(4, "0")}
+                    </span>
+                    <span className="flex items-center gap-1 rounded-lg bg-slate-800/70 px-2 py-1 text-[11px] font-semibold text-slate-300">
+                      <MapPin className="h-3 w-3 text-pink-400" />
+                      {selectedDistrict}
+                    </span>
+                  </div>
 
-              <button
-                onClick={() => {
-                  if (selectedDonor) {
-                    handleJumpRandomFreePlot();
-                    return;
-                  }
-                  playSfx("build");
-                  setShowModal(true);
-                }}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-2.5 text-sm font-black text-slate-950 shadow-lg hover:brightness-110 transition"
-              >
-                <Sparkles className="h-4 w-4" />
-                {selectedDonor
-                  ? "Find Available Plot ($1)"
-                  : `Lock In Plot #${String(selectedPlot).padStart(4, "0")} ($${previewAmount})`}
-              </button>
-            </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleJumpRandomFreePlot}
+                      title="Jump to a random open plot"
+                      className="rounded-lg border border-slate-700 bg-slate-800/80 p-1.5 text-slate-300 hover:border-amber-400 hover:text-amber-300 transition"
+                    >
+                      <Shuffle className="h-3.5 w-3.5" />
+                    </button>
 
-            {/* Patička vpravo dole: Legenda + How it Works & Terms */}
-            <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end">
-              <div className="hidden items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-2.5 text-xs text-slate-300 backdrop-blur-md lg:flex">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-3 w-3 rounded-sm bg-sky-400" /> $1 Bungalow
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-3 w-3 rounded-sm bg-pink-500" /> $5 Pool Villa
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-3 w-3 rounded-sm bg-emerald-400" /> $10+ Skyscraper
-                </span>
+                    <button
+                      onClick={handleOpenDeedCard}
+                      title="Generate shareable PNG Property Deed Card"
+                      className="flex items-center gap-1 rounded-lg border border-pink-500/40 bg-pink-500/15 px-2 py-1 text-[11px] font-bold text-pink-200 hover:border-pink-400 transition"
+                    >
+                      <Award className="h-3 w-3 text-pink-400" /> Deed
+                    </button>
+
+                    <button
+                      onClick={handleSharePlot}
+                      className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2 py-1 text-[11px] font-bold text-slate-300 hover:border-cyan-400 hover:text-white transition"
+                    >
+                      {copiedLink ? (
+                        <>
+                          <Check className="h-3 w-3 text-emerald-400" /> Link
+                        </>
+                      ) : (
+                        <>
+                          <Share2 className="h-3 w-3" /> Share
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {selectedVip && (
+                  <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-pink-500/15 border border-pink-500/30 px-2.5 py-1 text-[11px] font-bold text-pink-300">
+                    <Flame className="h-3.5 w-3.5 text-pink-400" />
+                    VIP SPOT: {selectedVip.label}
+                  </div>
+                )}
+
+                {selectedDonor ? (
+                  <div className="mt-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="text-lg font-black text-white">{selectedDonor.name}</div>
+                      <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-300">
+                        OWNED • ${selectedDonor.amount}
+                      </span>
+                    </div>
+                    <div className="text-xs font-semibold text-pink-400">
+                      {getTierLabel(selectedDonor.amount, selectedPlot === 1)}
+                    </div>
+                    {selectedDonor.message && (
+                      <p className="mt-1.5 rounded-lg bg-slate-950/80 p-2 text-xs text-slate-300 border border-slate-800">
+                        “{selectedDonor.message}”
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-2.5">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-1.5">
+                      <span>Test-build in 3D on this plot:</span>
+                      <span className="text-amber-300">AVAILABLE</span>
+                    </div>
+
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={previewName}
+                        onChange={(e) => setPreviewName(e.target.value)}
+                        placeholder="Type your @username..."
+                        className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+                      />
+                      <div className="flex rounded-lg border border-slate-700 bg-slate-950 p-0.5 text-[11px] font-black">
+                        {[1, 5, 10].map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => {
+                              setPreviewAmount(amt);
+                              playSfx("build");
+                            }}
+                            className={`rounded-md px-2 py-1 transition ${
+                              previewAmount === amt
+                                ? "bg-cyan-400 text-slate-950"
+                                : "text-slate-400 hover:text-white"
+                            }`}
+                          >
+                            ${amt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    if (selectedDonor) {
+                      handleJumpRandomFreePlot();
+                      return;
+                    }
+                    playSfx("build");
+                    setShowModal(true);
+                  }}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 py-2.5 text-sm font-black text-slate-950 shadow-lg hover:brightness-110 transition"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {selectedDonor
+                    ? "Find Available Plot ($1)"
+                    : `Lock In Plot #${String(selectedPlot).padStart(4, "0")} ($${previewAmount})`}
+                </button>
               </div>
 
-              <button
-                onClick={() => {
-                  playSfx("select");
-                  setShowTermsModal(true);
-                }}
-                className="flex items-center gap-1.5 rounded-2xl border border-slate-700/80 bg-slate-900/90 px-3.5 py-2.5 text-xs font-bold text-slate-300 shadow-xl backdrop-blur-md hover:border-cyan-400 hover:text-white transition"
-              >
-                <HelpCircle className="h-3.5 w-3.5 text-cyan-400" />
-                <span>How it Works & Terms</span>
-              </button>
+              {/* Patička vpravo dole: Legenda + How it Works & Terms */}
+              <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end">
+                <div className="hidden items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-2.5 text-xs text-slate-300 backdrop-blur-md lg:flex">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-3 w-3 rounded-sm bg-sky-400" /> $1 Bungalow
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-3 w-3 rounded-sm bg-pink-500" /> $5 Pool Villa
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-3 w-3 rounded-sm bg-emerald-400" /> $10+ Skyscraper
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    playSfx("select");
+                    setShowTermsModal(true);
+                  }}
+                  className="flex items-center gap-1.5 rounded-2xl border border-slate-700/80 bg-slate-900/90 px-3.5 py-2.5 text-xs font-bold text-slate-300 shadow-xl backdrop-blur-md hover:border-cyan-400 hover:text-white transition"
+                >
+                  <HelpCircle className="h-3.5 w-3.5 text-cyan-400" />
+                  <span>How it Works & Terms</span>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
 
