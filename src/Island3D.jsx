@@ -7,18 +7,25 @@ import {
   createBungalowFacade,
   createPlazaTexture,
   createPlotTexture,
+  createPromenadeTexture,
   createRoofTileTexture,
   createSandTexture,
+  createShopFacadeTexture,
   createSkyscraperFacade,
   createVillaFacade,
   createWaterTexture,
+  createWoodPierTexture,
 } from "./textures3D";
 
-const COLS = 40;
-const ROWS = 40;
-const TOTAL_PLOTS = COLS * ROWS;
-const TILE_STEP = 1.12;
+export const COLS = 40;
+export const ROWS = 40;
+export const TOTAL_PLOTS = COLS * ROWS;
+export const TILE_STEP = 1.24;
 const DEFAULT_VIP_PLOTS = {};
+
+// Souřadnice okružního pobřežního bulváru Ocean Drive
+const RING_COORD = 26.4;
+const GRID_HALF_SPAN = (COLS * TILE_STEP) / 2; // 24.8
 
 export const PLAYER_SKINS = {
   tourist: {
@@ -59,42 +66,155 @@ export const PLAYER_SKINS = {
   },
 };
 
-const INITIAL_STREET_CARS = [
-  { id: 0, axis: "x", dir: 1, lane: 0.46, baseSpeed: 5.2, offset: 0, color: "#F472B6" },
-  { id: 1, axis: "x", dir: 1, lane: 0.46, baseSpeed: 4.5, offset: 22, color: "#FACC15" },
-  { id: 2, axis: "x", dir: -1, lane: -0.46, baseSpeed: 5.5, offset: 11, color: "#38BDF8" },
-  { id: 3, axis: "z", dir: 1, lane: -0.46, baseSpeed: 4.9, offset: 6, color: "#A855F7" },
-  { id: 4, axis: "z", dir: -1, lane: 0.46, baseSpeed: 5.3, offset: 18, color: "#10B981" },
-  { id: 5, axis: "x", dir: 1, lane: 0.46, baseSpeed: 0, offset: 25, color: "#FFFFFF", isPersonal: true },
+// 4 interaktivní 3D obchody po obvodu ostrova (mimo 1 600 parcel)
+export const CITY_SHOPS = [
+  {
+    id: "diner",
+    name: "Malibu Neon Diner",
+    subtitle: "Energy Espresso & Turbo Boost",
+    x: -4.4,
+    z: 29.3,
+    rotY: Math.PI,
+    color: "#EC4899",
+    accent: "#22D3EE",
+    w: 2.8,
+    h: 1.55,
+    d: 2.1,
+  },
+  {
+    id: "motors",
+    name: "Vice Motors Showroom",
+    subtitle: "Custom Supercars & Neon Paint",
+    x: 4.4,
+    z: 29.3,
+    rotY: Math.PI,
+    color: "#F59E0B",
+    accent: "#38BDF8",
+    w: 3.1,
+    h: 1.75,
+    d: 2.2,
+  },
+  {
+    id: "boutique",
+    name: "Ocean Drive Boutique",
+    subtitle: "VIP Outfits & Streetwear",
+    x: 29.3,
+    z: -4.4,
+    rotY: -Math.PI / 2,
+    color: "#8B5CF6",
+    accent: "#F472B6",
+    w: 2.8,
+    h: 1.6,
+    d: 2.1,
+  },
+  {
+    id: "helipad",
+    name: "Marina Sky Helipad",
+    subtitle: "Vice Chopper & Aerial Tours",
+    x: -29.3,
+    z: 4.4,
+    rotY: Math.PI / 2,
+    color: "#10B981",
+    accent: "#FBBF24",
+    w: 2.8,
+    h: 1.4,
+    d: 2.2,
+  },
 ];
 
-const COIN_SPOTS = [
-  [0, 2.2],
-  [0, -2.2],
-  [2.2, 0],
-  [-2.2, 0],
-  [4.5, 0.45],
-  [-4.5, -0.45],
-  [9.0, 0.45],
-  [-9.0, -0.45],
-  [14.0, 0.45],
-  [-14.0, -0.45],
-  [19.5, 0.45],
-  [-19.5, -0.45],
-  [0.45, 5.2],
-  [-0.45, -5.2],
-  [0.45, 10.5],
-  [-0.45, -10.5],
-  [0.45, 15.5],
-  [-0.45, -15.5],
-  [0.45, 20.0],
-  [-0.45, -20.0],
-  [6.5, 6.5],
-  [-6.5, 6.5],
-  [6.5, -6.5],
-  [-6.5, -6.5],
-  [12.5, -12.5],
+// 7 AI aut (4 na hlavních bulvárech + 3 na pobřežním okruhu Ocean Drive) + 1 osobní sporťák
+const INITIAL_STREET_CARS = [
+  { id: 0, mode: "line", axis: "x", dir: 1, lane: 0.54, baseSpeed: 5.5, offset: 2, color: "#F472B6" },
+  { id: 1, mode: "line", axis: "x", dir: -1, lane: -0.54, baseSpeed: 5.8, offset: 15, color: "#38BDF8" },
+  { id: 2, mode: "line", axis: "z", dir: 1, lane: -0.54, baseSpeed: 5.2, offset: 8, color: "#A855F7" },
+  { id: 3, mode: "line", axis: "z", dir: -1, lane: 0.54, baseSpeed: 5.6, offset: 22, color: "#10B981" },
+  { id: 4, mode: "ring", ringDir: 1, progress: 0.05, baseSpeed: 6.4, color: "#FACC15" },
+  { id: 5, mode: "ring", ringDir: 1, progress: 0.42, baseSpeed: 6.1, color: "#FB7185" },
+  { id: 6, mode: "ring", ringDir: -1, progress: 0.72, baseSpeed: 6.3, color: "#22D3EE" },
+  { id: 7, mode: "line", axis: "x", dir: 1, lane: 0.54, baseSpeed: 0, offset: 0, color: "#FFFFFF", isPersonal: true },
 ];
+
+// Ověření, že souřadnice NEJSOU na žádné z 1 600 parcel (pouze silnice, náměstí, promenáda, mola a pláže)
+export function isValidCoinSpot(x, z) {
+  // Hranice ostrova + mol
+  const onPier =
+    (Math.abs(x) < 1.3 && Math.abs(z) >= 33.5 && Math.abs(z) <= 39.2) ||
+    (Math.abs(z) < 1.3 && Math.abs(x) >= 33.5 && Math.abs(x) <= 39.2);
+
+  if (!onPier && (Math.abs(x) > 33.5 || Math.abs(z) > 33.5)) {
+    return false;
+  }
+
+  // Centrální fontána
+  if (Math.hypot(x, z) < 1.65) {
+    return false;
+  }
+
+  // Kolize s 3D obchody
+  for (let i = 0; i < CITY_SHOPS.length; i++) {
+    const s = CITY_SHOPS[i];
+    if (Math.abs(x - s.x) < s.w * 0.65 && Math.abs(z - s.z) < s.d * 0.65) {
+      return false;
+    }
+  }
+
+  // Je bod uvnitř mřížky parcel [-24.8, +24.8]?
+  if (Math.abs(x) <= GRID_HALF_SPAN + 0.15 && Math.abs(z) <= GRID_HALF_SPAN + 0.15) {
+    // Povoleno POUZE na centrálních asfaltových bulvárech (středový kříž)
+    const onCenterCrossRoad = Math.abs(x) <= 1.05 || Math.abs(z) <= 1.05;
+    return onCenterCrossRoad;
+  }
+
+  // Mimo mřížku parcel (Ocean Drive, promenáda, pláže, mola) -> bezpečná zóna!
+  return true;
+}
+
+// 36 pečlivě vybraných pozic pro Vice Coiny na silnicích, promenádě, plážích a molech
+const RAW_COIN_CANDIDATES = [
+  // Centrální křížové bulváry
+  [0, 2.4],
+  [0, -2.4],
+  [2.4, 0],
+  [-2.4, 0],
+  [6.0, 0.5],
+  [-6.0, -0.5],
+  [12.0, 0.5],
+  [-12.0, -0.5],
+  [18.5, 0.5],
+  [-18.5, -0.5],
+  [0.5, 6.0],
+  [-0.5, -6.0],
+  [0.5, 12.0],
+  [-0.5, -12.0],
+  [0.5, 18.5],
+  [-0.5, -18.5],
+  // Okružní bulvár Ocean Drive (±26.4)
+  [0, 26.4],
+  [13.0, 26.4],
+  [-13.0, 26.4],
+  [26.4, 26.4],
+  [-26.4, 26.4],
+  [0, -26.4],
+  [13.0, -26.4],
+  [-13.0, -26.4],
+  [26.4, -26.4],
+  [-26.4, -26.4],
+  [26.4, 0],
+  [26.4, 13.0],
+  [26.4, -13.0],
+  [-26.4, 0],
+  [-26.4, 13.0],
+  [-26.4, -13.0],
+  // Pláže a 4 dřevěná mola
+  [0, 36.5],
+  [0, -36.5],
+  [36.5, 0],
+  [-36.5, 0],
+];
+
+const SAFE_COIN_SPOTS = RAW_COIN_CANDIDATES.filter(([cx, cz]) =>
+  isValidCoinSpot(cx, cz)
+);
 
 export function plotToWorld(plotNum) {
   const idx = plotNum - 1;
@@ -113,6 +233,28 @@ export function worldToPlot(x, z) {
   const row = Math.round(z / TILE_STEP + (ROWS - 1) / 2);
   if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
   return row * COLS + col + 1;
+}
+
+// Výpočet pozice a natočení na okružním bulváru Ocean Drive
+function getRingPose(progress, dir) {
+  const p = ((progress % 1) + 1) % 1;
+  const side = RING_COORD * 2;
+  const laneOffset = dir > 0 ? 0.52 : -0.52;
+  const r = RING_COORD + laneOffset;
+  const seg = Math.floor(p * 4);
+  const t = (p * 4) % 1;
+
+  if (dir > 0) {
+    if (seg === 0) return { x: -r + t * (r * 2), z: r, yaw: Math.PI / 2 };
+    if (seg === 1) return { x: r, z: r - t * (r * 2), yaw: Math.PI };
+    if (seg === 2) return { x: r - t * (r * 2), z: -r, yaw: -Math.PI / 2 };
+    return { x: -r, z: -r + t * (r * 2), yaw: 0 };
+  } else {
+    if (seg === 0) return { x: r - t * (r * 2), z: r, yaw: -Math.PI / 2 };
+    if (seg === 1) return { x: -r, z: r - t * (r * 2), yaw: Math.PI };
+    if (seg === 2) return { x: -r + t * (r * 2), z: -r, yaw: Math.PI / 2 };
+    return { x: r, z: -r + t * (r * 2), yaw: 0 };
+  }
 }
 
 // 1. Otexturovaná mřížka 1 600 parcel
@@ -228,7 +370,7 @@ function PlotsInstancedGrid({
             }
       }
     >
-      <boxGeometry args={[1.06, 0.14, 1.06]} />
+      <boxGeometry args={[1.16, 0.14, 1.16]} />
       <meshStandardMaterial map={plotTexture} roughness={0.75} metalness={0.1} />
     </instancedMesh>
   );
@@ -271,26 +413,37 @@ function Building3D({
   const labelHeight =
     tier === "skyscraper"
       ? amount >= 20
-        ? 4.45
-        : 3.65
+        ? 4.85
+        : 3.95
       : tier === "villa" || tier === "founder"
-        ? 1.85
-        : 1.3;
+        ? 2.0
+        : 1.42;
 
   return (
     <group ref={groupRef} position={[x, 0.14, z]}>
       {tier === "bungalow" && (
         <group>
-          <mesh position={[0, 0.04, 0.08]} receiveShadow={castShadow}>
-            <boxGeometry args={[0.88, 0.08, 0.92]} />
+          {/* Dřevěná veranda */}
+          <mesh position={[0, 0.04, 0.1]} receiveShadow={castShadow}>
+            <boxGeometry args={[0.98, 0.08, 1.02]} />
             <meshStandardMaterial color="#92400E" roughness={0.85} />
           </mesh>
+          {/* Sloupky verandy */}
+          <mesh position={[-0.36, 0.3, 0.5]}>
+            <cylinderGeometry args={[0.025, 0.025, 0.48, 8]} />
+            <meshStandardMaterial color="#F8FAFC" />
+          </mesh>
+          <mesh position={[0.36, 0.3, 0.5]}>
+            <cylinderGeometry args={[0.025, 0.025, 0.48, 8]} />
+            <meshStandardMaterial color="#F8FAFC" />
+          </mesh>
+          {/* Hlavní stěny bungalovu */}
           <mesh
-            position={[0, 0.34, -0.02]}
+            position={[0, 0.36, -0.04]}
             castShadow={castShadow}
             receiveShadow={castShadow}
           >
-            <boxGeometry args={[0.74, 0.54, 0.68]} />
+            <boxGeometry args={[0.82, 0.58, 0.74]} />
             <meshStandardMaterial
               map={textures.bungalow}
               roughness={0.5}
@@ -298,29 +451,37 @@ function Building3D({
               opacity={isPreview ? 0.88 : 1}
             />
           </mesh>
+          {/* Tropická valbová střecha */}
           <mesh
-            position={[0, 0.78, -0.02]}
+            position={[0, 0.84, 0.02]}
             rotation={[0, Math.PI / 4, 0]}
             castShadow={castShadow}
           >
-            <coneGeometry args={[0.64, 0.36, 4]} />
+            <coneGeometry args={[0.74, 0.4, 4]} />
             <meshStandardMaterial map={textures.roof} roughness={0.6} />
+          </mesh>
+          {/* Komín */}
+          <mesh position={[0.22, 0.92, -0.18]}>
+            <boxGeometry args={[0.1, 0.24, 0.1]} />
+            <meshStandardMaterial color="#7C2D12" />
           </mesh>
         </group>
       )}
 
       {(tier === "villa" || tier === "founder") && (
         <group>
+          {/* Kamenná terasa */}
           <mesh position={[0, 0.05, 0]} receiveShadow={castShadow}>
-            <boxGeometry args={[0.96, 0.1, 0.96]} />
-            <meshStandardMaterial color="#CBD5E1" />
+            <boxGeometry args={[1.06, 0.1, 1.06]} />
+            <meshStandardMaterial color="#E2E8F0" />
           </mesh>
+          {/* Hlavní dvoupatrová Art Deco vila */}
           <mesh
-            position={[0, 0.54, 0]}
+            position={[0, 0.58, 0]}
             castShadow={castShadow}
             receiveShadow={castShadow}
           >
-            <boxGeometry args={[0.86, 0.88, 0.86]} />
+            <boxGeometry args={[0.94, 0.96, 0.94]} />
             <meshStandardMaterial
               map={isFounder ? textures.founderVilla : textures.villa}
               roughness={0.35}
@@ -329,17 +490,24 @@ function Building3D({
               opacity={isPreview ? 0.88 : 1}
             />
           </mesh>
-          <mesh position={[0, 1.02, 0]} castShadow={castShadow}>
-            <boxGeometry args={[0.94, 0.08, 0.94]} />
+          {/* Neonová střešní římsa */}
+          <mesh position={[0, 1.1, 0]} castShadow={castShadow}>
+            <boxGeometry args={[1.04, 0.09, 1.04]} />
             <meshStandardMaterial
               color={isFounder ? "#F59E0B" : "#EC4899"}
               emissive={isFounder ? "#F59E0B" : "#EC4899"}
-              emissiveIntensity={0.45}
+              emissiveIntensity={0.5}
             />
           </mesh>
-          <mesh position={[0, 1.07, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[0.62, 0.62]} />
+          {/* Střešní bazén */}
+          <mesh position={[0, 1.155, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[0.68, 0.68]} />
             <meshBasicMaterial color="#22D3EE" />
+          </mesh>
+          {/* Lehátko u bazénu */}
+          <mesh position={[0.38, 1.17, 0]}>
+            <boxGeometry args={[0.1, 0.04, 0.28]} />
+            <meshStandardMaterial color="#F472B6" />
           </mesh>
         </group>
       )}
@@ -347,15 +515,21 @@ function Building3D({
       {tier === "skyscraper" && (
         <group>
           {(() => {
-            const h = amount >= 20 ? 3.5 : 2.7;
+            const h = amount >= 20 ? 3.85 : 2.95;
             return (
               <>
+                {/* Spodní lobby */}
+                <mesh position={[0, 0.18, 0]}>
+                  <boxGeometry args={[1.04, 0.36, 1.04]} />
+                  <meshStandardMaterial color="#0F172A" metalness={0.7} roughness={0.2} />
+                </mesh>
+                {/* Hlavní skleněná věž */}
                 <mesh
                   position={[0, h / 2, 0]}
                   castShadow={castShadow}
                   receiveShadow={castShadow}
                 >
-                  <boxGeometry args={[0.88, h, 0.88]} />
+                  <boxGeometry args={[0.96, h, 0.96]} />
                   <meshStandardMaterial
                     map={textures.skyscraper}
                     metalness={0.65}
@@ -364,24 +538,27 @@ function Building3D({
                     opacity={isPreview ? 0.88 : 1}
                   />
                 </mesh>
-                <mesh position={[0, h + 0.16, 0]} castShadow={castShadow}>
-                  <boxGeometry args={[0.64, 0.32, 0.64]} />
+                {/* Ustoupené horní patro (penthouse) */}
+                <mesh position={[0, h + 0.18, 0]} castShadow={castShadow}>
+                  <boxGeometry args={[0.72, 0.36, 0.72]} />
                   <meshStandardMaterial
                     map={textures.skyscraper}
-                    metalness={0.7}
-                    roughness={0.18}
+                    metalness={0.75}
+                    roughness={0.16}
                   />
                 </mesh>
-                <mesh position={[0, h + 0.33, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                  <ringGeometry args={[0.16, 0.25, 24]} />
+                {/* Střešní heliport */}
+                <mesh position={[0, h + 0.37, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                  <ringGeometry args={[0.18, 0.28, 24]} />
                   <meshBasicMaterial color="#10B981" />
                 </mesh>
-                <mesh position={[0, h + 0.48, 0]}>
-                  <cylinderGeometry args={[0.015, 0.02, 0.3, 6]} />
+                {/* Anténa a blikající maják */}
+                <mesh position={[0, h + 0.54, 0]}>
+                  <cylinderGeometry args={[0.015, 0.025, 0.34, 6]} />
                   <meshBasicMaterial color="#E2E8F0" />
                 </mesh>
-                <mesh ref={beaconRef} position={[0, h + 0.66, 0]}>
-                  <sphereGeometry args={[0.08, 12, 12]} />
+                <mesh ref={beaconRef} position={[0, h + 0.74, 0]}>
+                  <sphereGeometry args={[0.09, 12, 12]} />
                   <meshBasicMaterial color="#F472B6" />
                 </mesh>
               </>
@@ -407,67 +584,199 @@ function Building3D({
   );
 }
 
-// 3. Klenuté 3D palmy kolem ostrova
-function PalmTrees3D({ castShadow = true }) {
-  const trees = useMemo(() => {
-    const arr = [];
-    const edge = (COLS / 2) * TILE_STEP + 0.85;
-    for (let i = -edge + 2; i <= edge - 2; i += 3.6) {
-      arr.push([i, -edge], [i, edge], [-edge, i], [edge, i]);
+// 3. Klenuté 3D palmy a plážové slunečníky kolem celého zvětšeného ostrova
+function CoastalProps3D({ castShadow = true }) {
+  const { palms, umbrellas } = useMemo(() => {
+    const pArr = [];
+    const uArr = [];
+    const promEdge = 28.4;
+
+    // Palmy podél celé pobřežní promenády Ocean Drive
+    for (let i = -promEdge + 2.5; i <= promEdge - 2.5; i += 4.2) {
+      if (Math.abs(i) < 2.2) continue; // Volný průjezd k molům
+      pArr.push([i, -promEdge], [i, promEdge], [-promEdge, i], [promEdge, i]);
     }
-    arr.push([-1.85, -1.85], [1.85, -1.85], [-1.85, 1.85], [1.85, 1.85]);
-    return arr;
+    // 4 palmy u centrálního náměstí
+    pArr.push([-2.15, -2.15], [2.15, -2.15], [-2.15, 2.15], [2.15, 2.15]);
+
+    // Barevné plážové slunečníky a lehátka na písku (±31.4)
+    const beachCoord = 31.4;
+    const colors = ["#EC4899", "#06B6D4", "#F59E0B", "#10B981"];
+    let cIdx = 0;
+    for (let i = -24; i <= 24; i += 8) {
+      if (Math.abs(i) < 3) continue;
+      uArr.push({ x: i, z: beachCoord, color: colors[cIdx++ % colors.length] });
+      uArr.push({ x: i, z: -beachCoord, color: colors[cIdx++ % colors.length] });
+      uArr.push({ x: beachCoord, z: i, color: colors[cIdx++ % colors.length] });
+      uArr.push({ x: -beachCoord, z: i, color: colors[cIdx++ % colors.length] });
+    }
+
+    return { palms: pArr, umbrellas: uArr };
   }, []);
 
   return (
     <group>
-      {trees.map(([tx, tz], idx) => (
-        <group key={idx} position={[tx, 0.05, tz]} rotation={[0, idx * 0.9, 0]}>
-          <mesh position={[0, 0.35, 0]} rotation={[0.08, 0, 0.06]} castShadow={castShadow}>
-            <cylinderGeometry args={[0.08, 0.12, 0.7, 7]} />
+      {palms.map(([tx, tz], idx) => (
+        <group key={`palm-${idx}`} position={[tx, 0.05, tz]} rotation={[0, idx * 0.9, 0]}>
+          <mesh position={[0, 0.38, 0]} rotation={[0.08, 0, 0.06]} castShadow={castShadow}>
+            <cylinderGeometry args={[0.085, 0.13, 0.76, 7]} />
             <meshStandardMaterial color="#78350F" roughness={0.9} />
           </mesh>
           <mesh
-            position={[0.06, 0.98, 0.05]}
+            position={[0.06, 1.05, 0.05]}
             rotation={[0.16, 0, 0.12]}
             castShadow={castShadow}
           >
-            <cylinderGeometry args={[0.055, 0.08, 0.68, 7]} />
+            <cylinderGeometry args={[0.06, 0.085, 0.74, 7]} />
             <meshStandardMaterial color="#92400E" roughness={0.9} />
           </mesh>
-          <mesh position={[0.1, 1.24, 0.08]}>
-            <sphereGeometry args={[0.08, 8, 8]} />
+          <mesh position={[0.1, 1.34, 0.08]}>
+            <sphereGeometry args={[0.085, 8, 8]} />
             <meshStandardMaterial color="#451A03" />
           </mesh>
           {[0, 1.05, 2.1, 3.15, 4.2, 5.25].map((rot, fIdx) => (
             <group
               key={fIdx}
-              position={[0.1, 1.3, 0.08]}
+              position={[0.1, 1.4, 0.08]}
               rotation={[0.45, rot, 0]}
             >
-              <mesh position={[0, 0, 0.42]} castShadow={castShadow}>
-                <boxGeometry args={[0.18, 0.03, 0.82]} />
+              <mesh position={[0, 0, 0.45]} castShadow={castShadow}>
+                <boxGeometry args={[0.19, 0.03, 0.88]} />
                 <meshStandardMaterial color={fIdx % 2 === 0 ? "#10B981" : "#059669"} />
               </mesh>
             </group>
           ))}
         </group>
       ))}
+
+      {/* Plážové slunečníky a lehátka */}
+      {umbrellas.map((u, idx) => (
+        <group key={`umb-${idx}`} position={[u.x, 0.05, u.z]}>
+          <mesh position={[0, 0.45, 0]}>
+            <cylinderGeometry args={[0.025, 0.025, 0.9, 6]} />
+            <meshStandardMaterial color="#F8FAFC" />
+          </mesh>
+          <mesh position={[0, 0.88, 0]} castShadow={castShadow}>
+            <coneGeometry args={[0.65, 0.28, 8]} />
+            <meshStandardMaterial color={u.color} />
+          </mesh>
+          <mesh position={[0.38, 0.06, 0.12]}>
+            <boxGeometry args={[0.28, 0.08, 0.56]} />
+            <meshStandardMaterial color="#FFFFFF" />
+          </mesh>
+        </group>
+      ))}
     </group>
   );
 }
 
-// 4. Asfaltové bulváry + fontána + jachty + animovaný oceán
-function StaticWorldEnvironment({ roadTex, plazaTex, waterTex, castShadow = true }) {
+// 4. 4 Interaktivní 3D obchody po obvodu ostrova
+function CityShops3D({ textures, nearShopId, castShadow = true }) {
+  const showCarRef = useRef(null);
+
+  useFrame(({ clock }) => {
+    if (showCarRef.current) {
+      showCarRef.current.rotation.y = clock.getElapsedTime() * 1.4;
+    }
+  });
+
+  return (
+    <group>
+      {CITY_SHOPS.map((shop) => {
+        const isNear = nearShopId === shop.id;
+        return (
+          <group
+            key={shop.id}
+            position={[shop.x, 0.08, shop.z]}
+            rotation={[0, shop.rotY, 0]}
+          >
+            {/* Budova obchodu */}
+            <mesh position={[0, shop.h / 2, 0]} castShadow={castShadow} receiveShadow={castShadow}>
+              <boxGeometry args={[shop.w, shop.h, shop.d]} />
+              <meshStandardMaterial
+                map={textures.shops[shop.id]}
+                roughness={0.35}
+                metalness={0.2}
+              />
+            </mesh>
+
+            {/* Neonový střešní rám */}
+            <mesh position={[0, shop.h + 0.08, 0]}>
+              <boxGeometry args={[shop.w + 0.16, 0.12, shop.d + 0.16]} />
+              <meshStandardMaterial
+                color={shop.color}
+                emissive={shop.color}
+                emissiveIntensity={0.7}
+              />
+            </mesh>
+
+            {/* Speciální rekvizity u obchodů */}
+            {shop.id === "motors" && (
+              <group position={[0, shop.h + 0.28, 0]} ref={showCarRef}>
+                <mesh>
+                  <boxGeometry args={[0.52, 0.18, 0.96]} />
+                  <meshStandardMaterial color="#FBBF24" metalness={0.8} roughness={0.15} />
+                </mesh>
+                <mesh position={[0, 0.14, -0.05]}>
+                  <boxGeometry args={[0.42, 0.14, 0.48]} />
+                  <meshStandardMaterial color="#0F172A" />
+                </mesh>
+              </group>
+            )}
+
+            {shop.id === "helipad" && (
+              <mesh position={[0, shop.h + 0.15, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[0.55, 0.78, 24]} />
+                <meshBasicMaterial color="#FBBF24" />
+              </mesh>
+            )}
+
+            {/* Svítící interakční zóna před vchodem */}
+            <mesh position={[0, 0.02, shop.d / 2 + 0.95]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[0.55, 0.72, 24]} />
+              <meshBasicMaterial
+                color={isNear ? "#FBBF24" : shop.accent}
+                transparent
+                opacity={isNear ? 0.95 : 0.65}
+              />
+            </mesh>
+
+            <Html position={[0, shop.h + 0.65, 0]} center zIndexRange={[10, 0]}>
+              <div
+                className={`pointer-events-none whitespace-nowrap rounded-lg px-2.5 py-0.5 text-[10px] font-black shadow-xl border ${
+                  isNear
+                    ? "bg-amber-400 text-slate-950 border-white scale-110"
+                    : "bg-slate-950/90 text-white border-pink-400/80"
+                }`}
+              >
+                {shop.name}
+              </div>
+            </Html>
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+// 5. Asfaltové bulváry + okruh Ocean Drive + mola + fontána + jachty + animovaný oceán
+function StaticWorldEnvironment({
+  roadTex,
+  plazaTex,
+  promenadeTex,
+  pierTex,
+  waterTex,
+  castShadow = true,
+}) {
   const boatsRef = useRef([]);
   const fountainRingRef = useRef(null);
-  const islandSpan = COLS * TILE_STEP;
+  const fullRoadSpan = RING_COORD * 2 + 2.3;
 
   const boats = useMemo(
     () => [
-      { radius: 28.5, speed: 0.22, offset: 0, color: "#EC4899" },
-      { radius: 31.5, speed: -0.18, offset: 2.1, color: "#06B6D4" },
-      { radius: 30, speed: 0.2, offset: 4.2, color: "#F59E0B" },
+      { radius: 42.5, speed: 0.18, offset: 0, color: "#EC4899" },
+      { radius: 46.5, speed: -0.15, offset: 2.1, color: "#06B6D4" },
+      { radius: 44.5, speed: 0.16, offset: 4.2, color: "#F59E0B" },
     ],
     []
   );
@@ -496,12 +805,19 @@ function StaticWorldEnvironment({ roadTex, plazaTex, waterTex, castShadow = true
 
   return (
     <group>
+      {/* Palmová promenáda kolem okružního bulváru */}
+      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow={castShadow}>
+        <planeGeometry args={[59.5, 59.5]} />
+        <meshStandardMaterial map={promenadeTex} roughness={0.75} />
+      </mesh>
+
+      {/* Centrální křížové bulváry */}
       <mesh
         position={[0, 0.055, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow={castShadow}
       >
-        <planeGeometry args={[TILE_STEP * 2.02, islandSpan]} />
+        <planeGeometry args={[TILE_STEP * 2.02, fullRoadSpan]} />
         <meshStandardMaterial map={roadTex} roughness={0.85} />
       </mesh>
 
@@ -510,10 +826,47 @@ function StaticWorldEnvironment({ roadTex, plazaTex, waterTex, castShadow = true
         rotation={[-Math.PI / 2, 0, Math.PI / 2]}
         receiveShadow={castShadow}
       >
-        <planeGeometry args={[TILE_STEP * 2.02, islandSpan]} />
+        <planeGeometry args={[TILE_STEP * 2.02, fullRoadSpan]} />
         <meshStandardMaterial map={roadTex} roughness={0.85} />
       </mesh>
 
+      {/* 4 úseky okružního pobřežního bulváru Ocean Drive (±26.4) */}
+      <mesh position={[0, 0.056, RING_COORD]} rotation={[-Math.PI / 2, 0, Math.PI / 2]} receiveShadow={castShadow}>
+        <planeGeometry args={[2.3, fullRoadSpan]} />
+        <meshStandardMaterial map={roadTex} roughness={0.85} />
+      </mesh>
+      <mesh position={[0, 0.056, -RING_COORD]} rotation={[-Math.PI / 2, 0, Math.PI / 2]} receiveShadow={castShadow}>
+        <planeGeometry args={[2.3, fullRoadSpan]} />
+        <meshStandardMaterial map={roadTex} roughness={0.85} />
+      </mesh>
+      <mesh position={[RING_COORD, 0.056, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow={castShadow}>
+        <planeGeometry args={[2.3, fullRoadSpan]} />
+        <meshStandardMaterial map={roadTex} roughness={0.85} />
+      </mesh>
+      <mesh position={[-RING_COORD, 0.056, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow={castShadow}>
+        <planeGeometry args={[2.3, fullRoadSpan]} />
+        <meshStandardMaterial map={roadTex} roughness={0.85} />
+      </mesh>
+
+      {/* 4 Dřevěná mola vybíhající do oceánu */}
+      <mesh position={[0, 0.04, 36.2]} receiveShadow={castShadow}>
+        <boxGeometry args={[2.4, 0.14, 6.4]} />
+        <meshStandardMaterial map={pierTex} roughness={0.85} />
+      </mesh>
+      <mesh position={[0, 0.04, -36.2]} receiveShadow={castShadow}>
+        <boxGeometry args={[2.4, 0.14, 6.4]} />
+        <meshStandardMaterial map={pierTex} roughness={0.85} />
+      </mesh>
+      <mesh position={[36.2, 0.04, 0]} receiveShadow={castShadow}>
+        <boxGeometry args={[6.4, 0.14, 2.4]} />
+        <meshStandardMaterial map={pierTex} roughness={0.85} />
+      </mesh>
+      <mesh position={[-36.2, 0.04, 0]} receiveShadow={castShadow}>
+        <boxGeometry args={[6.4, 0.14, 2.4]} />
+        <meshStandardMaterial map={pierTex} roughness={0.85} />
+      </mesh>
+
+      {/* Centrální náměstí s přechody */}
       <mesh
         position={[0, 0.062, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
@@ -523,13 +876,14 @@ function StaticWorldEnvironment({ roadTex, plazaTex, waterTex, castShadow = true
         <meshStandardMaterial map={plazaTex} roughness={0.7} />
       </mesh>
 
+      {/* Centrální neonová fontána */}
       <group position={[0, 0.09, 0]}>
         <mesh>
-          <cylinderGeometry args={[0.92, 1.02, 0.16, 24]} />
+          <cylinderGeometry args={[0.98, 1.08, 0.16, 24]} />
           <meshStandardMaterial color="#1E1B4B" />
         </mesh>
         <mesh position={[0, 0.09, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[0.78, 24]} />
+          <circleGeometry args={[0.84, 24]} />
           <meshBasicMaterial color="#22D3EE" />
         </mesh>
         <mesh
@@ -537,11 +891,12 @@ function StaticWorldEnvironment({ roadTex, plazaTex, waterTex, castShadow = true
           position={[0, 0.11, 0]}
           rotation={[-Math.PI / 2, 0, 0]}
         >
-          <ringGeometry args={[0.4, 0.52, 24]} />
+          <ringGeometry args={[0.42, 0.56, 24]} />
           <meshBasicMaterial color="#F472B6" />
         </mesh>
       </group>
 
+      {/* Jachty plující kolem ostrova */}
       {boats.map((b, idx) => (
         <group
           key={idx}
@@ -550,11 +905,11 @@ function StaticWorldEnvironment({ roadTex, plazaTex, waterTex, castShadow = true
           }}
         >
           <mesh castShadow={castShadow}>
-            <boxGeometry args={[0.58, 0.22, 1.65]} />
+            <boxGeometry args={[0.68, 0.25, 1.9]} />
             <meshStandardMaterial color="#FFFFFF" roughness={0.3} />
           </mesh>
-          <mesh position={[0, 0.14, -0.1]}>
-            <boxGeometry args={[0.42, 0.14, 0.85]} />
+          <mesh position={[0, 0.16, -0.1]}>
+            <boxGeometry args={[0.48, 0.16, 0.98]} />
             <meshStandardMaterial color={b.color} />
           </mesh>
         </group>
@@ -563,7 +918,7 @@ function StaticWorldEnvironment({ roadTex, plazaTex, waterTex, castShadow = true
   );
 }
 
-// 5. Plynulý 3D přelet kamery (Map View)
+// 6. Plynulý 3D přelet kamery (Map View)
 function CameraController({ focusSignal, selectedPlot, resetSignal }) {
   const controlsRef = useRef(null);
   const flyRef = useRef(null);
@@ -574,7 +929,7 @@ function CameraController({ focusSignal, selectedPlot, resetSignal }) {
     const { x, z } = plotToWorld(selectedPlot);
     flyRef.current = {
       target: new THREE.Vector3(x, 0.5, z),
-      pos: new THREE.Vector3(x + 8.5, 9.5, z + 10.5),
+      pos: new THREE.Vector3(x + 9.5, 10.5, z + 11.5),
     };
   }, [focusSignal, selectedPlot]);
 
@@ -582,7 +937,7 @@ function CameraController({ focusSignal, selectedPlot, resetSignal }) {
     if (resetSignal === 0) return;
     flyRef.current = {
       target: new THREE.Vector3(0, 0, 0),
-      pos: new THREE.Vector3(0, 32, 36),
+      pos: new THREE.Vector3(0, 40, 44),
     };
   }, [resetSignal]);
 
@@ -610,7 +965,7 @@ function CameraController({ focusSignal, selectedPlot, resetSignal }) {
       enableDamping
       dampingFactor={0.07}
       minDistance={4.5}
-      maxDistance={68}
+      maxDistance={85}
       maxPolarAngle={Math.PI / 2.15}
       onStart={() => {
         flyRef.current = null;
@@ -619,7 +974,80 @@ function CameraController({ focusSignal, selectedPlot, resetSignal }) {
   );
 }
 
-// 6. Živí multiplayer hráči v 3D světě
+// 7. Vylepšený 3D model sporťáku
+function SportsCarModel({ color, isLit, neonRef, castShadow }) {
+  return (
+    <group>
+      {/* Hlavní spodní šasi */}
+      <mesh position={[0, 0.02, 0]} castShadow={castShadow}>
+        <boxGeometry args={[0.42, 0.12, 0.84]} />
+        <meshStandardMaterial color={color} metalness={0.55} roughness={0.22} />
+      </mesh>
+      {/* Zkosená přední kapota */}
+      <mesh position={[0, 0.07, 0.22]} rotation={[0.14, 0, 0]} castShadow={castShadow}>
+        <boxGeometry args={[0.38, 0.06, 0.34]} />
+        <meshStandardMaterial color={color} metalness={0.55} roughness={0.22} />
+      </mesh>
+      {/* Prosklená kabina */}
+      <mesh position={[0, 0.13, -0.05]}>
+        <boxGeometry args={[0.33, 0.12, 0.4]} />
+        <meshStandardMaterial color="#090D16" metalness={0.9} roughness={0.08} />
+      </mesh>
+      {/* Zadní křídlo / spoiler */}
+      <mesh position={[0, 0.14, -0.39]}>
+        <boxGeometry args={[0.42, 0.03, 0.08]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.45} />
+      </mesh>
+      <mesh position={[-0.14, 0.1, -0.38]}>
+        <boxGeometry args={[0.03, 0.07, 0.05]} />
+        <meshStandardMaterial color="#0F172A" />
+      </mesh>
+      <mesh position={[0.14, 0.1, -0.38]}>
+        <boxGeometry args={[0.03, 0.07, 0.05]} />
+        <meshStandardMaterial color="#0F172A" />
+      </mesh>
+      {/* 4 3D kola */}
+      {[
+        [-0.21, -0.02, 0.25],
+        [0.21, -0.02, 0.25],
+        [-0.21, -0.02, -0.25],
+        [0.21, -0.02, -0.25],
+      ].map(([wx, wy, wz], idx) => (
+        <mesh key={idx} position={[wx, wy, wz]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.075, 0.075, 0.05, 12]} />
+          <meshStandardMaterial color="#0F172A" roughness={0.7} />
+        </mesh>
+      ))}
+      {/* Přední LED světlomety + zadní červená světla */}
+      <mesh position={[0, 0.04, 0.425]}>
+        <boxGeometry args={[0.32, 0.035, 0.01]} />
+        <meshBasicMaterial color="#FEF08A" />
+      </mesh>
+      <mesh position={[0, 0.05, -0.425]}>
+        <boxGeometry args={[0.34, 0.035, 0.01]} />
+        <meshBasicMaterial color="#EF4444" />
+      </mesh>
+      {isLit && (
+        <mesh position={[0, -0.05, 0.78]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.52, 0.95]} />
+          <meshBasicMaterial color="#FEF08A" transparent opacity={0.38} />
+        </mesh>
+      )}
+      {/* Neonové podsvícení */}
+      <mesh
+        ref={neonRef}
+        visible={false}
+        position={[0, -0.07, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <planeGeometry args={[0.62, 1.04]} />
+        <meshBasicMaterial color="#22D3EE" transparent opacity={0.8} />
+      </mesh>
+    </group>
+  );
+}
+
+// 8. Živí multiplayer hráči v 3D světě
 function RemotePlayerEntity({ player }) {
   const groupRef = useRef(null);
   const rotorRef = useRef(null);
@@ -646,7 +1074,7 @@ function RemotePlayerEntity({ player }) {
     player.vehicleMode === "heli"
       ? 1.15
       : player.vehicleMode === "car"
-        ? 0.72
+        ? 0.75
         : 1.16;
 
   return (
@@ -667,20 +1095,11 @@ function RemotePlayerEntity({ player }) {
           </mesh>
         </group>
       ) : player.vehicleMode === "car" ? (
-        <group>
-          <mesh>
-            <boxGeometry args={[0.38, 0.16, 0.72]} />
-            <meshStandardMaterial
-              color={player.carColor || "#F472B6"}
-              metalness={0.45}
-              roughness={0.28}
-            />
-          </mesh>
-          <mesh position={[0, 0.12, -0.04]}>
-            <boxGeometry args={[0.31, 0.12, 0.38]} />
-            <meshStandardMaterial color="#0F172A" metalness={0.85} roughness={0.1} />
-          </mesh>
-        </group>
+        <SportsCarModel
+          color={player.carColor || "#F472B6"}
+          isLit={false}
+          castShadow={false}
+        />
       ) : (
         <group>
           <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -711,16 +1130,18 @@ function RemotePlayerEntity({ player }) {
   );
 }
 
-// 7. Kompletní GTA simulace: 5 AI aut + Osobní auto + Vrtulník + Vice Coiny + Postava
+// 9. Kompletní GTA simulace: 7 AI aut + Osobní auto + Vrtulník + Off-Plot Vice Coiny + Obchody
 function InteractiveCitySimulation({
   streetMode,
   theme,
   activeDonors,
   playerName,
   playerSkin,
+  speedBoostActive = false,
   playerInputRef,
   castShadow = true,
   onNearbyPlotChange,
+  onNearbyShopChange,
   onPlayerTransformChange,
   onVehicleStateChange,
   onCoinCollect,
@@ -728,7 +1149,7 @@ function InteractiveCitySimulation({
 }) {
   const { camera, gl } = useThree();
   const isLit = theme === "night" || theme === "sunset";
-  const limit = (COLS * TILE_STEP) / 2;
+  const lineLimit = RING_COORD;
   const activeSkin = PLAYER_SKINS[playerSkin] || PLAYER_SKINS.tourist;
 
   const carMeshesRef = useRef([]);
@@ -742,16 +1163,28 @@ function InteractiveCitySimulation({
   const heliStateRef = useRef({
     spawned: false,
     inHeli: false,
-    x: 2.2,
+    x: -29.3,
     y: 0.16,
-    z: 2.2,
-    yaw: 0,
+    z: 7.2,
+    yaw: Math.PI / 2,
     vy: 0,
   });
 
   const carsStateRef = useRef(
     INITIAL_STREET_CARS.map((c) => {
-      const startPos = -limit + c.offset;
+      if (c.mode === "ring") {
+        const pose = getRingPose(c.progress, c.ringDir);
+        return {
+          ...c,
+          visible: true,
+          x: pose.x,
+          z: pose.z,
+          yaw: pose.yaw,
+          speed: 0,
+          hijacked: false,
+        };
+      }
+      const startPos = -lineLimit + c.offset;
       return {
         ...c,
         visible: !c.isPersonal,
@@ -772,7 +1205,7 @@ function InteractiveCitySimulation({
   );
 
   const coinsStateRef = useRef(
-    COIN_SPOTS.map(([cx, cz], idx) => ({
+    SAFE_COIN_SPOTS.map(([cx, cz], idx) => ({
       id: idx,
       x: cx,
       z: cz,
@@ -793,8 +1226,9 @@ function InteractiveCitySimulation({
   const camPitchRef = useRef(0.32);
 
   const inCarIdRef = useRef(null);
-  const nearbyTargetRef = useRef(null); // { type: "car" | "heli", id?: number }
+  const nearbyTargetRef = useRef(null); // { type: "car" | "heli" | "shop", id?: number|string }
   const lastReportedVehicleRef = useRef("");
+  const lastReportedShopRef = useRef(null);
 
   const keysRef = useRef({});
   const dragRef = useRef({ active: false, x: 0, y: 0 });
@@ -803,47 +1237,55 @@ function InteractiveCitySimulation({
   const uiTickRef = useRef(0);
   const hornCooldownRef = useRef(0);
 
-  const buildingColliders = useMemo(() => {
-    return activeDonors.map((d) => {
+  // Kolizní boxy všech budov dárců + všech 3D obchodů
+  const staticColliders = useMemo(() => {
+    const list = activeDonors.map((d) => {
       const { x, z } = plotToWorld(d.plot);
-      return { x, z, half: 0.48 };
+      return { x, z, halfX: 0.54, halfZ: 0.54 };
     });
+    for (const s of CITY_SHOPS) {
+      list.push({
+        x: s.x,
+        z: s.z,
+        halfX: s.w / 2 + 0.1,
+        halfZ: s.d / 2 + 0.1,
+      });
+    }
+    return list;
   }, [activeDonors]);
 
-  // Nastoupení / vystoupení z auta nebo vrtulníku
-  const toggleVehicleAction = useMemo(() => {
+  // Nastoupení / vystoupení z vozidla NEBO vstup do obchodu
+  const toggleAction = useMemo(() => {
     return () => {
       if (!streetMode) return;
       const heli = heliStateRef.current;
 
-      // Vystoupení z vrtulníku
       if (heli.inHeli) {
         heli.inHeli = false;
         heli.y = 0.16;
         heli.vy = 0;
-        const exitX = heli.x - Math.cos(heli.yaw) * 0.95;
-        const exitZ = heli.z + Math.sin(heli.yaw) * 0.95;
+        const exitX = heli.x - Math.cos(heli.yaw) * 1.05;
+        const exitZ = heli.z + Math.sin(heli.yaw) * 1.05;
         posRef.current.set(
-          Math.max(-22.8, Math.min(22.8, exitX)),
+          Math.max(-33.0, Math.min(33.0, exitX)),
           0.14,
-          Math.max(-22.8, Math.min(22.8, exitZ))
+          Math.max(-33.0, Math.min(33.0, exitZ))
         );
         facingYawRef.current = heli.yaw;
         onPlaySfx?.("select");
         return;
       }
 
-      // Vystoupení z auta
       if (inCarIdRef.current !== null) {
         const car = carsStateRef.current.find((c) => c.id === inCarIdRef.current);
         if (car) {
           car.speed = 0;
-          const exitX = car.x - Math.cos(car.yaw) * 0.72;
-          const exitZ = car.z + Math.sin(car.yaw) * 0.72;
+          const exitX = car.x - Math.cos(car.yaw) * 0.78;
+          const exitZ = car.z + Math.sin(car.yaw) * 0.78;
           posRef.current.set(
-            Math.max(-22.8, Math.min(22.8, exitX)),
+            Math.max(-33.0, Math.min(33.0, exitX)),
             0.14,
-            Math.max(-22.8, Math.min(22.8, exitZ))
+            Math.max(-33.0, Math.min(33.0, exitZ))
           );
           facingYawRef.current = car.yaw;
         }
@@ -852,11 +1294,13 @@ function InteractiveCitySimulation({
         return;
       }
 
-      // Nastoupení do nejbližšího vozidla
       const target = nearbyTargetRef.current;
       if (!target) return;
 
-      if (target.type === "heli" && heli.spawned) {
+      if (target.type === "shop") {
+        playerInputRef.current.openShop?.(target.id);
+        onPlaySfx?.("select");
+      } else if (target.type === "heli" && heli.spawned) {
         heli.inHeli = true;
         camYawRef.current = heli.yaw + Math.PI;
         onPlaySfx?.("build");
@@ -871,9 +1315,8 @@ function InteractiveCitySimulation({
         }
       }
     };
-  }, [onPlaySfx, streetMode]);
+  }, [onPlaySfx, playerInputRef, streetMode]);
 
-  // Přivolání osobního auta nebo vrtulníku z Garáže
   const spawnPersonalCar = useMemo(() => {
     return (colorHex = "#FFFFFF") => {
       const car = carsStateRef.current.find((c) => c.isPersonal);
@@ -910,11 +1353,11 @@ function InteractiveCitySimulation({
 
   useEffect(() => {
     if (playerInputRef?.current) {
-      playerInputRef.current.toggleVehicle = toggleVehicleAction;
+      playerInputRef.current.toggleVehicle = toggleAction;
       playerInputRef.current.spawnPersonalCar = spawnPersonalCar;
       playerInputRef.current.spawnHelicopter = spawnHelicopter;
     }
-  }, [playerInputRef, spawnHelicopter, spawnPersonalCar, toggleVehicleAction]);
+  }, [playerInputRef, spawnHelicopter, spawnPersonalCar, toggleAction]);
 
   useEffect(() => {
     if (!streetMode) {
@@ -930,6 +1373,7 @@ function InteractiveCitySimulation({
       onVehicleStateChange?.({
         mode: "foot",
         canEnter: null,
+        shopId: null,
         carColor: null,
         speedKmh: 0,
         altitude: 0,
@@ -946,7 +1390,7 @@ function InteractiveCitySimulation({
         return;
       }
       if (!e.repeat && (e.code === "KeyE" || e.code === "KeyF")) {
-        toggleVehicleAction();
+        toggleAction();
       }
       keysRef.current[e.code] = true;
     };
@@ -960,7 +1404,7 @@ function InteractiveCitySimulation({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [toggleVehicleAction]);
+  }, [toggleAction]);
 
   useEffect(() => {
     if (!streetMode) return;
@@ -1014,7 +1458,7 @@ function InteractiveCitySimulation({
       hornCooldownRef.current -= dt;
     }
 
-    // 1. Pohyb aut
+    // 1. Pohyb všech 8 aut
     const cars = carsStateRef.current;
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i];
@@ -1043,13 +1487,13 @@ function InteractiveCitySimulation({
           onPlaySfx?.("horn");
         }
 
-        const maxForward = c.isPersonal ? 18.0 : 15.5;
-        const maxReverse = -6.0;
+        const maxForward = (c.isPersonal ? 18.5 : 16.0) * (speedBoostActive ? 1.15 : 1);
+        const maxReverse = -6.5;
 
         if (throttle > 0.05) {
-          c.speed += throttle * 17.5 * dt;
-        } else if (throttle < -0.05) {
           c.speed += throttle * 18.0 * dt;
+        } else if (throttle < -0.05) {
+          c.speed += throttle * 18.5 * dt;
         } else {
           c.speed *= Math.pow(0.16, dt);
           if (Math.abs(c.speed) < 0.08) c.speed = 0;
@@ -1071,7 +1515,8 @@ function InteractiveCitySimulation({
         c.x += Math.sin(c.yaw) * c.speed * dt;
         c.z += Math.cos(c.yaw) * c.speed * dt;
 
-        const maxCarBound = 22.9;
+        // Kolize auta s okrajem rozšířeného ostrova
+        const maxCarBound = 33.0;
         if (Math.abs(c.x) > maxCarBound) {
           c.x = Math.sign(c.x) * maxCarBound;
           c.speed *= 0.5;
@@ -1081,8 +1526,9 @@ function InteractiveCitySimulation({
           c.speed *= 0.5;
         }
 
+        // Kolize s fontánou
         const fDist = Math.hypot(c.x, c.z);
-        const minFountainCar = 1.48;
+        const minFountainCar = 1.54;
         if (fDist < minFountainCar && fDist > 0.001) {
           const push = (minFountainCar - fDist) / fDist;
           c.x += c.x * push;
@@ -1090,15 +1536,17 @@ function InteractiveCitySimulation({
           c.speed *= 0.65;
         }
 
-        const carRadius = 0.36;
-        for (let bIdx = 0; bIdx < buildingColliders.length; bIdx++) {
-          const b = buildingColliders[bIdx];
-          const hitLimit = b.half + carRadius;
+        // Kolize s budovami dárců i obchody
+        const carRadius = 0.38;
+        for (let bIdx = 0; bIdx < staticColliders.length; bIdx++) {
+          const b = staticColliders[bIdx];
+          const hitX = b.halfX + carRadius;
+          const hitZ = b.halfZ + carRadius;
           const dx = c.x - b.x;
           const dz = c.z - b.z;
-          if (Math.abs(dx) < hitLimit && Math.abs(dz) < hitLimit) {
-            const ovX = hitLimit - Math.abs(dx);
-            const ovZ = hitLimit - Math.abs(dz);
+          if (Math.abs(dx) < hitX && Math.abs(dz) < hitZ) {
+            const ovX = hitX - Math.abs(dx);
+            const ovZ = hitZ - Math.abs(dz);
             if (ovX < ovZ) {
               c.x += dx >= 0 ? ovX : -ovX;
             } else {
@@ -1110,7 +1558,8 @@ function InteractiveCitySimulation({
 
         const neonMesh = carNeonMeshesRef.current[i];
         if (neonMesh) {
-          neonMesh.visible = (isDrifting && Math.abs(c.speed) > 2.5) || Boolean(c.isPersonal);
+          neonMesh.visible =
+            (isDrifting && Math.abs(c.speed) > 2.5) || Boolean(c.isPersonal);
         }
 
         posRef.current.set(c.x, 0.14, c.z);
@@ -1127,21 +1576,30 @@ function InteractiveCitySimulation({
         const distToPlayer = streetMode
           ? Math.hypot(c.x - posRef.current.x, c.z - posRef.current.z)
           : 99;
-        const aiSpeed = distToPlayer < 1.9 ? 0 : c.baseSpeed;
-        const span = limit * 2;
+        const aiSpeed = distToPlayer < 2.0 ? 0 : c.baseSpeed;
 
-        if (c.axis === "x") {
-          c.x += c.dir * aiSpeed * dt;
-          if (c.x > limit) c.x -= span;
-          if (c.x < -limit) c.x += span;
-          c.z = c.lane;
-          c.yaw = c.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        if (c.mode === "ring") {
+          const perimeter = RING_COORD * 8;
+          c.progress = (c.progress + (aiSpeed * dt) / perimeter) % 1;
+          const pose = getRingPose(c.progress, c.ringDir);
+          c.x = pose.x;
+          c.z = pose.z;
+          c.yaw = pose.yaw;
         } else {
-          c.z += c.dir * aiSpeed * dt;
-          if (c.z > limit) c.z -= span;
-          if (c.z < -limit) c.z += span;
-          c.x = c.lane;
-          c.yaw = c.dir > 0 ? 0 : Math.PI;
+          const span = lineLimit * 2;
+          if (c.axis === "x") {
+            c.x += c.dir * aiSpeed * dt;
+            if (c.x > lineLimit) c.x -= span;
+            if (c.x < -lineLimit) c.x += span;
+            c.z = c.lane;
+            c.yaw = c.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+          } else {
+            c.z += c.dir * aiSpeed * dt;
+            if (c.z > lineLimit) c.z -= span;
+            if (c.z < -lineLimit) c.z += span;
+            c.x = c.lane;
+            c.yaw = c.dir > 0 ? 0 : Math.PI;
+          }
         }
       }
 
@@ -1170,21 +1628,21 @@ function InteractiveCitySimulation({
           );
 
           if (ascend) {
-            heli.vy = 6.5;
+            heli.vy = 6.8;
           } else if (descend) {
-            heli.vy = -6.5;
+            heli.vy = -6.8;
           } else {
             heli.vy *= Math.pow(0.08, dt);
           }
 
-          heli.y = Math.max(0.16, Math.min(18.0, heli.y + heli.vy * dt));
+          heli.y = Math.max(0.16, Math.min(20.0, heli.y + heli.vy * dt));
           heli.yaw -= yawInput * 2.2 * dt;
 
-          const airSpeed = pitch * 13.5;
+          const airSpeed = pitch * 14.5;
           heli.x += Math.sin(heli.yaw) * airSpeed * dt;
           heli.z += Math.cos(heli.yaw) * airSpeed * dt;
 
-          const maxHeliBound = 24.5;
+          const maxHeliBound = 35.0;
           heli.x = Math.max(-maxHeliBound, Math.min(maxHeliBound, heli.x));
           heli.z = Math.max(-maxHeliBound, Math.min(maxHeliBound, heli.z));
 
@@ -1213,9 +1671,9 @@ function InteractiveCitySimulation({
       }
     }
 
-    // 3. Vice Coiny
+    // 3. Vice Coiny (striktně mimo parcely a budovy)
     const coins = coinsStateRef.current;
-    const pickupRadius = heli.inHeli ? 1.25 : inCarIdRef.current !== null ? 0.92 : 0.65;
+    const pickupRadius = heli.inHeli ? 1.3 : inCarIdRef.current !== null ? 0.96 : 0.7;
 
     for (let i = 0; i < coins.length; i++) {
       const coin = coins[i];
@@ -1225,9 +1683,18 @@ function InteractiveCitySimulation({
         coin.respawnTimer -= dt;
         if (coin.respawnTimer <= 0) {
           coin.respawnTimer = 0;
-          const spot = COIN_SPOTS[Math.floor(Math.random() * COIN_SPOTS.length)];
-          coin.x = spot[0] + (Math.random() - 0.5) * 0.4;
-          coin.z = spot[1] + (Math.random() - 0.5) * 0.4;
+          // Hledáme bezpečný bod mimo parcely
+          for (let attempt = 0; attempt < 15; attempt++) {
+            const spot =
+              SAFE_COIN_SPOTS[Math.floor(Math.random() * SAFE_COIN_SPOTS.length)];
+            const candX = spot[0] + (Math.random() - 0.5) * 0.35;
+            const candZ = spot[1] + (Math.random() - 0.5) * 0.35;
+            if (isValidCoinSpot(candX, candZ)) {
+              coin.x = candX;
+              coin.z = candZ;
+              break;
+            }
+          }
         }
         if (mesh) mesh.visible = false;
         continue;
@@ -1242,7 +1709,7 @@ function InteractiveCitySimulation({
       if (streetMode && posRef.current.y < 1.8) {
         const d = Math.hypot(coin.x - posRef.current.x, coin.z - posRef.current.z);
         if (d < pickupRadius) {
-          coin.respawnTimer = 11;
+          coin.respawnTimer = 10;
           if (mesh) mesh.visible = false;
           onCoinCollect?.();
           onPlaySfx?.("coin");
@@ -1279,7 +1746,8 @@ function InteractiveCitySimulation({
       const isSprinting = Boolean(
         keys["ShiftLeft"] || keys["ShiftRight"] || touch.sprint
       );
-      const speed = isSprinting ? 7.6 : 4.4;
+      const boostMult = speedBoostActive ? 1.45 : 1.0;
+      const speed = (isSprinting ? 7.8 : 4.6) * boostMult;
 
       const sinYaw = Math.sin(camYawRef.current);
       const cosYaw = Math.cos(camYawRef.current);
@@ -1293,7 +1761,7 @@ function InteractiveCitySimulation({
       const groundY = 0.14;
       const wantsJump = Boolean(keys["Space"] || touch.jump);
       if (wantsJump && pos.y <= groundY + 0.005) {
-        velYRef.current = 6.2;
+        velYRef.current = speedBoostActive ? 8.2 : 6.4;
         if (playerInputRef?.current) {
           playerInputRef.current.jump = false;
         }
@@ -1306,27 +1774,34 @@ function InteractiveCitySimulation({
         velYRef.current = 0;
       }
 
-      const maxIsland = 23.2;
+      // Hranice rozšířeného ostrova (včetně mol)
+      const onPier =
+        (Math.abs(pos.x) < 1.15 && Math.abs(pos.z) <= 39.0) ||
+        (Math.abs(pos.z) < 1.15 && Math.abs(pos.x) <= 39.0);
+      const maxIsland = onPier ? 39.0 : 33.4;
       pos.x = Math.max(-maxIsland, Math.min(maxIsland, pos.x));
       pos.z = Math.max(-maxIsland, Math.min(maxIsland, pos.z));
 
+      // Kolize s fontánou
       const fountainDist = Math.hypot(pos.x, pos.z);
-      const minFountainDist = 1.28;
+      const minFountainDist = 1.32;
       if (fountainDist < minFountainDist && fountainDist > 0.001) {
         const push = (minFountainDist - fountainDist) / fountainDist;
         pos.x += pos.x * push;
         pos.z += pos.z * push;
       }
 
-      const playerRadius = 0.22;
-      for (let i = 0; i < buildingColliders.length; i++) {
-        const b = buildingColliders[i];
-        const hitLimit = b.half + playerRadius;
+      // Kolize s budovami dárců i obchody
+      const playerRadius = 0.24;
+      for (let i = 0; i < staticColliders.length; i++) {
+        const b = staticColliders[i];
+        const hitX = b.halfX + playerRadius;
+        const hitZ = b.halfZ + playerRadius;
         const dx = pos.x - b.x;
         const dz = pos.z - b.z;
-        if (Math.abs(dx) < hitLimit && Math.abs(dz) < hitLimit) {
-          const overlapX = hitLimit - Math.abs(dx);
-          const overlapZ = hitLimit - Math.abs(dz);
+        if (Math.abs(dx) < hitX && Math.abs(dz) < hitZ) {
+          const overlapX = hitX - Math.abs(dx);
+          const overlapZ = hitZ - Math.abs(dz);
           if (overlapX < overlapZ) {
             pos.x += dx >= 0 ? overlapX : -overlapX;
           } else {
@@ -1358,9 +1833,20 @@ function InteractiveCitySimulation({
         playerGroupRef.current.rotation.y = facingYawRef.current;
       }
 
-      // Kontrola nejbližšího auta nebo vrtulníku
+      // Kontrola nejbližšího obchodu, auta nebo vrtulníku
       let closestTarget = null;
-      let closestDist = 1.95;
+      let closestDist = 2.4;
+
+      for (let i = 0; i < CITY_SHOPS.length; i++) {
+        const s = CITY_SHOPS[i];
+        const entranceX = s.x + Math.sin(s.rotY) * (s.d / 2 + 0.95);
+        const entranceZ = s.z + Math.cos(s.rotY) * (s.d / 2 + 0.95);
+        const dShop = Math.hypot(entranceX - pos.x, entranceZ - pos.z);
+        if (dShop < 1.65) {
+          closestDist = dShop;
+          closestTarget = { type: "shop", id: s.id };
+        }
+      }
 
       if (heli.spawned) {
         const dHeli = Math.hypot(heli.x - pos.x, heli.z - pos.z);
@@ -1373,7 +1859,7 @@ function InteractiveCitySimulation({
       for (let i = 0; i < cars.length; i++) {
         if (!cars[i].visible) continue;
         const d = Math.hypot(cars[i].x - pos.x, cars[i].z - pos.z);
-        if (d < closestDist) {
+        if (d < Math.min(closestDist, 1.95)) {
           closestDist = d;
           closestTarget = { type: "car", id: cars[i].id };
         }
@@ -1386,7 +1872,7 @@ function InteractiveCitySimulation({
       ? cars.find((c) => c.id === inCarIdRef.current)
       : null;
     const speedBoostDist = activeCar ? Math.abs(activeCar.speed) * 0.08 : 0;
-    const camDist = (isInHeli ? 6.2 : isInCar ? 5.1 : 4.4) + speedBoostDist;
+    const camDist = (isInHeli ? 6.4 : isInCar ? 5.2 : 4.5) + speedBoostDist;
     const camHeight =
       (isInHeli ? 2.2 : isInCar ? 1.85 : 1.65) + Math.sin(camPitchRef.current) * 2.5;
     const horizDist = Math.cos(camPitchRef.current) * camDist;
@@ -1409,7 +1895,7 @@ function InteractiveCitySimulation({
       onNearbyPlotChange(nearbyPlot);
     }
 
-    // Aktualizace UI a multiplayer pozice (~10x za sekundu)
+    // Aktualizace UI a multiplayer pozice
     uiTickRef.current += dt;
     if (uiTickRef.current >= 0.1) {
       uiTickRef.current = 0;
@@ -1430,14 +1916,24 @@ function InteractiveCitySimulation({
           ? Math.round(Math.abs(activeCar.speed) * 9.5)
           : 0;
       const altitude = isInHeli ? Math.max(0, Math.round((heli.y - 0.16) * 8)) : 0;
-      const canEnterType = onFoot ? nearbyTargetRef.current?.type || null : null;
-      const signature = `${mode}-${canEnterType}-${speedKmh}-${altitude}`;
+      const targetType = onFoot ? nearbyTargetRef.current?.type || null : null;
+      const shopId =
+        onFoot && nearbyTargetRef.current?.type === "shop"
+          ? nearbyTargetRef.current.id
+          : null;
 
+      if (shopId !== lastReportedShopRef.current) {
+        lastReportedShopRef.current = shopId;
+        onNearbyShopChange?.(shopId);
+      }
+
+      const signature = `${mode}-${targetType}-${shopId}-${speedKmh}-${altitude}`;
       if (signature !== lastReportedVehicleRef.current) {
         lastReportedVehicleRef.current = signature;
         onVehicleStateChange?.({
           mode,
-          canEnter: canEnterType,
+          canEnter: targetType,
+          shopId,
           carColor: activeCar?.color || null,
           speedKmh,
           altitude,
@@ -1446,9 +1942,14 @@ function InteractiveCitySimulation({
     }
   });
 
+  const activeShopId =
+    streetMode && inCarIdRef.current === null && !heliStateRef.current.inHeli
+      ? lastReportedShopRef.current
+      : null;
+
   return (
     <group>
-      {/* 5 AI aut + 1 osobní sporťák */}
+      {/* 7 AI aut + 1 osobní sporťák */}
       {INITIAL_STREET_CARS.map((c, idx) => (
         <group
           key={c.id}
@@ -1456,68 +1957,60 @@ function InteractiveCitySimulation({
             carMeshesRef.current[idx] = el;
           }}
         >
-          <mesh castShadow={castShadow}>
-            <boxGeometry args={[0.38, 0.16, 0.72]} />
-            <meshStandardMaterial color={c.color} metalness={0.45} roughness={0.28} />
-          </mesh>
-          <mesh position={[0, 0.12, -0.04]}>
-            <boxGeometry args={[0.31, 0.12, 0.38]} />
-            <meshStandardMaterial color="#0F172A" metalness={0.85} roughness={0.1} />
-          </mesh>
-          <mesh position={[0, 0.12, -0.34]}>
-            <boxGeometry args={[0.38, 0.04, 0.06]} />
-            <meshStandardMaterial color={c.color} emissive={c.color} emissiveIntensity={0.6} />
-          </mesh>
-          {isLit && (
-            <mesh position={[0, -0.02, 0.65]} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[0.48, 0.85]} />
-              <meshBasicMaterial color="#FEF08A" transparent opacity={0.36} />
-            </mesh>
-          )}
-          <mesh
-            ref={(el) => {
+          <SportsCarModel
+            color={c.color}
+            isLit={isLit}
+            neonRef={(el) => {
               carNeonMeshesRef.current[idx] = el;
             }}
-            visible={false}
-            position={[0, -0.07, 0]}
-            rotation={[-Math.PI / 2, 0, 0]}
-          >
-            <planeGeometry args={[0.56, 0.92]} />
-            <meshBasicMaterial color="#22D3EE" transparent opacity={0.75} />
-          </mesh>
+            castShadow={castShadow}
+          />
         </group>
       ))}
 
       {/* Osobní 3D vrtulník (Vice Chopper) */}
-      <group ref={heliGroupRef} visible={false} position={[2.2, 0.16, 2.2]}>
+      <group ref={heliGroupRef} visible={false} position={[-29.3, 0.16, 7.2]}>
+        {/* Trup */}
         <mesh castShadow={castShadow}>
-          <boxGeometry args={[0.48, 0.34, 0.92]} />
+          <boxGeometry args={[0.5, 0.36, 0.96]} />
           <meshStandardMaterial color="#EC4899" metalness={0.65} roughness={0.2} />
         </mesh>
-        <mesh position={[0, 0.04, 0.36]}>
-          <boxGeometry args={[0.44, 0.26, 0.32]} />
+        {/* Čelní kokpit */}
+        <mesh position={[0, 0.04, 0.38]}>
+          <boxGeometry args={[0.45, 0.28, 0.34]} />
           <meshStandardMaterial color="#22D3EE" metalness={0.9} roughness={0.1} />
         </mesh>
-        <mesh position={[0, 0.04, -0.78]}>
-          <boxGeometry args={[0.12, 0.14, 0.72]} />
+        {/* Přistávací ližiny */}
+        <mesh position={[-0.22, -0.22, 0.05]}>
+          <boxGeometry args={[0.04, 0.04, 0.92]} />
+          <meshStandardMaterial color="#CBD5E1" />
+        </mesh>
+        <mesh position={[0.22, -0.22, 0.05]}>
+          <boxGeometry args={[0.04, 0.04, 0.92]} />
+          <meshStandardMaterial color="#CBD5E1" />
+        </mesh>
+        {/* Ocasní nosník */}
+        <mesh position={[0, 0.04, -0.82]}>
+          <boxGeometry args={[0.12, 0.14, 0.78]} />
           <meshStandardMaterial color="#1E1B4B" />
         </mesh>
-        <mesh position={[0, 0.21, 0]}>
+        {/* Rotorová hlava + listy */}
+        <mesh position={[0, 0.22, 0]}>
           <cylinderGeometry args={[0.05, 0.05, 0.12, 8]} />
           <meshStandardMaterial color="#CBD5E1" />
         </mesh>
-        <mesh ref={mainRotorRef} position={[0, 0.27, 0]}>
-          <boxGeometry args={[1.72, 0.02, 0.11]} />
+        <mesh ref={mainRotorRef} position={[0, 0.28, 0]}>
+          <boxGeometry args={[1.82, 0.02, 0.12]} />
           <meshBasicMaterial color="#22D3EE" />
         </mesh>
-        <mesh ref={tailRotorRef} position={[0.09, 0.08, -1.1]}>
-          <boxGeometry args={[0.02, 0.34, 0.06]} />
+        <mesh ref={tailRotorRef} position={[0.09, 0.08, -1.16]}>
+          <boxGeometry args={[0.02, 0.36, 0.06]} />
           <meshBasicMaterial color="#FBBF24" />
         </mesh>
       </group>
 
-      {/* 25 rotujících Vice Coinů */}
-      {COIN_SPOTS.map((_, idx) => (
+      {/* Rotující Vice Coiny (striktně na silnicích, promenádě, molech a plážích) */}
+      {SAFE_COIN_SPOTS.map((_, idx) => (
         <mesh
           key={idx}
           ref={(el) => {
@@ -1525,13 +2018,13 @@ function InteractiveCitySimulation({
           }}
           position={[0, 0.42, 0]}
         >
-          <cylinderGeometry args={[0.17, 0.17, 0.05, 16]} />
+          <cylinderGeometry args={[0.18, 0.18, 0.05, 16]} />
           <meshStandardMaterial
             color="#FBBF24"
             emissive="#F59E0B"
-            emissiveIntensity={0.65}
-            metalness={0.8}
-            roughness={0.2}
+            emissiveIntensity={0.7}
+            metalness={0.85}
+            roughness={0.18}
           />
         </mesh>
       ))}
@@ -1541,7 +2034,11 @@ function InteractiveCitySimulation({
         <group ref={playerGroupRef} position={[0, 0.14, 3.6]}>
           <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <ringGeometry args={[0.22, 0.3, 24]} />
-            <meshBasicMaterial color="#22D3EE" transparent opacity={0.85} />
+            <meshBasicMaterial
+              color={speedBoostActive ? "#F472B6" : "#22D3EE"}
+              transparent
+              opacity={0.9}
+            />
           </mesh>
 
           <group ref={leftLegRef} position={[-0.085, 0.34, 0]}>
@@ -1629,6 +2126,7 @@ export default function Island3D({
   resetSignal,
   streetMode = false,
   playerSkin = "tourist",
+  speedBoostActive = false,
   remotePlayers = [],
   playerInputRef,
   onSelectPlot,
@@ -1647,6 +2145,8 @@ export default function Island3D({
     return {
       road: createAsphaltRoadTexture(),
       plaza: createPlazaTexture(),
+      promenade: createPromenadeTexture(),
+      pier: createWoodPierTexture(),
       plot: createPlotTexture(theme),
       skyscraper: createSkyscraperFacade(theme),
       villa: createVillaFacade(theme, false),
@@ -1655,12 +2155,24 @@ export default function Island3D({
       roof: createRoofTileTexture(),
       sand: createSandTexture(theme),
       water: createWaterTexture(theme),
+      shops: {
+        diner: createShopFacadeTexture("#EC4899", "#22D3EE", "MALIBU DINER"),
+        motors: createShopFacadeTexture("#F59E0B", "#38BDF8", "VICE MOTORS"),
+        boutique: createShopFacadeTexture("#8B5CF6", "#F472B6", "VICE DRIP"),
+        helipad: createShopFacadeTexture("#10B981", "#FBBF24", "SKY HELIPAD"),
+      },
     };
   }, [theme]);
 
   useEffect(() => {
     return () => {
-      Object.values(textures).forEach((tex) => tex?.dispose());
+      Object.entries(textures).forEach(([key, val]) => {
+        if (key === "shops") {
+          Object.values(val).forEach((t) => t?.dispose());
+        } else {
+          val?.dispose();
+        }
+      });
     };
   }, [textures]);
 
@@ -1674,15 +2186,15 @@ export default function Island3D({
       shadows={!isMobile}
       dpr={isMobile ? [1, 1.25] : [1, 2]}
       gl={{ powerPreference: "high-performance", antialias: !isMobile }}
-      camera={{ position: [0, 32, 36], fov: streetMode ? 56 : 44 }}
+      camera={{ position: [0, 40, 44], fov: streetMode ? 56 : 44 }}
       className="h-full w-full touch-none"
     >
       <color attach="background" args={[bgHex]} />
-      <fog attach="fog" args={[bgHex, 58, 140]} />
+      <fog attach="fog" args={[bgHex, 72, 165]} />
 
-      <ambientLight intensity={theme === "day" ? 1.15 : 0.72} />
+      <ambientLight intensity={theme === "day" ? 1.15 : 0.75} />
       <directionalLight
-        position={[24, 38, 22]}
+        position={[32, 48, 28]}
         intensity={theme === "day" ? 1.8 : theme === "sunset" ? 1.5 : 1.15}
         color={
           theme === "sunset"
@@ -1695,14 +2207,15 @@ export default function Island3D({
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
       />
-      <pointLight position={[0, 6, 0]} intensity={1.4} color="#EC4899" distance={35} />
+      <pointLight position={[0, 8, 0]} intensity={1.5} color="#EC4899" distance={45} />
 
+      {/* Hluboký oceán + mělká tyrkysová laguna */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, -0.25, 0]}
         receiveShadow={!isMobile}
       >
-        <planeGeometry args={[280, 280]} />
+        <planeGeometry args={[340, 340]} />
         <meshStandardMaterial
           map={textures.water}
           roughness={0.25}
@@ -1710,16 +2223,17 @@ export default function Island3D({
         />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.18, 0]}>
-        <planeGeometry args={[52, 52]} />
+        <planeGeometry args={[76, 76]} />
         <meshBasicMaterial
           color={theme === "day" ? "#22D3EE" : "#0E7490"}
           transparent
-          opacity={0.42}
+          opacity={0.44}
         />
       </mesh>
 
+      {/* Rozšířený písečný ostrov (68 x 68) */}
       <mesh position={[0, -0.06, 0]} receiveShadow={!isMobile}>
-        <boxGeometry args={[47.4, 0.24, 47.4]} />
+        <boxGeometry args={[68.0, 0.24, 68.0]} />
         <meshStandardMaterial map={textures.sand} roughness={0.85} />
       </mesh>
 
@@ -1771,15 +2285,17 @@ export default function Island3D({
         />
       )}
 
-      <PalmTrees3D castShadow={!isMobile} />
+      <CoastalProps3D castShadow={!isMobile} />
+      <CityShops3D textures={textures} castShadow={!isMobile} />
       <StaticWorldEnvironment
         roadTex={textures.road}
         plazaTex={textures.plaza}
+        promenadeTex={textures.promenade}
+        pierTex={textures.pier}
         waterTex={textures.water}
         castShadow={!isMobile}
       />
 
-      {/* Ostatní online hráči v 3D */}
       {remotePlayers.map((rp) => (
         <RemotePlayerEntity key={rp.id} player={rp} />
       ))}
@@ -1790,6 +2306,7 @@ export default function Island3D({
         activeDonors={activeDonors}
         playerName={previewName.trim() ? formattedHandle : "@visitor"}
         playerSkin={playerSkin}
+        speedBoostActive={speedBoostActive}
         playerInputRef={playerInputRef}
         castShadow={!isMobile}
         onNearbyPlotChange={onSelectPlot}

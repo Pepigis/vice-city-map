@@ -6,6 +6,7 @@ import {
   Award,
   Car,
   Check,
+  Coffee,
   Coins,
   Copy,
   Crown,
@@ -31,6 +32,7 @@ import {
   Shirt,
   Shuffle,
   Sparkles,
+  Store,
   Sun,
   Sunset,
   Trophy,
@@ -42,7 +44,14 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import Island3D, { PLAYER_SKINS } from "./Island3D";
+import Island3D, {
+  CITY_SHOPS,
+  COLS,
+  PLAYER_SKINS,
+  ROWS,
+  TILE_STEP,
+  TOTAL_PLOTS,
+} from "./Island3D";
 
 const FALLBACK_DONORS = [];
 
@@ -70,10 +79,6 @@ const DEMO_DONORS = [
   { plot: 777, name: "@lucky_seven", amount: 20, message: "Jackpot skyscraper!" },
 ];
 
-const COLS = 40;
-const ROWS = 40;
-const TOTAL_PLOTS = COLS * ROWS;
-const TILE_STEP = 1.12;
 const XBOX_GOAL_USD = 1224;
 const FINAL_GOAL_USD = 1600;
 const KOFI_URL = "https://ko-fi.com/vectorbra1n";
@@ -410,14 +415,6 @@ export default function App() {
   );
   const channelRef = useRef(null);
   const lastBroadcastRef = useRef(0);
-  const latestTransformRef = useRef({
-    x: 0,
-    y: 0.14,
-    z: 3.6,
-    yaw: Math.PI,
-    vehicleMode: "foot",
-    carColor: "#FFFFFF",
-  });
 
   const playerInputRef = useRef({
     moveX: 0,
@@ -429,6 +426,7 @@ export default function App() {
     toggleVehicle: null,
     spawnPersonalCar: null,
     spawnHelicopter: null,
+    openShop: null,
   });
 
   const [theme, setTheme] = useState("night");
@@ -440,11 +438,14 @@ export default function App() {
   const [touchSprint, setTouchSprint] = useState(false);
   const [viceCoins, setViceCoins] = useState(0);
   const [playerSkin, setPlayerSkin] = useState("tourist");
+  const [boostUntil, setBoostUntil] = useState(0);
+  const [boostLeftSec, setBoostLeftSec] = useState(0);
   const [remotePlayersMap, setRemotePlayersMap] = useState({});
 
   const [vehicleState, setVehicleState] = useState({
     mode: "foot",
     canEnter: null,
+    shopId: null,
     carColor: null,
     speedKmh: 0,
     altitude: 0,
@@ -467,6 +468,7 @@ export default function App() {
   const [hoveredPlot, setHoveredPlot] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showGarageModal, setShowGarageModal] = useState(false);
+  const [activeShopModal, setActiveShopModal] = useState(null);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showDeedModal, setShowDeedModal] = useState(false);
   const [deedImageUrl, setDeedImageUrl] = useState("");
@@ -548,13 +550,38 @@ export default function App() {
     [soundOn]
   );
 
+  // Odpočet aktivního Energy Boostu z Malibu Diner
+  useEffect(() => {
+    if (boostUntil <= Date.now()) {
+      setBoostLeftSec(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      const rem = Math.max(0, Math.ceil((boostUntil - Date.now()) / 1000));
+      setBoostLeftSec(rem);
+      if (rem === 0) clearInterval(timer);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [boostUntil]);
+
+  // Propojení otevření obchodu z 3D světa
+  useEffect(() => {
+    playerInputRef.current.openShop = (shopId) => {
+      if (shopId === "boutique" || shopId === "helipad") {
+        setShowGarageModal(true);
+      } else {
+        setActiveShopModal(shopId);
+      }
+    };
+  }, []);
+
   const formattedHandle = previewName.trim()
     ? previewName.trim().startsWith("@")
       ? previewName.trim()
       : `@${previewName.trim()}`
     : "@your_name";
 
-  // Supabase Realtime Multiplayer (Presence + Broadcast)
+  // Supabase Realtime Multiplayer
   useEffect(() => {
     if (!supabase) return;
 
@@ -597,7 +624,6 @@ export default function App() {
 
     channelRef.current = channel;
 
-    // Pravidelné odstraňování neaktivních hráčů po 8 sekundách
     const cleanupTimer = setInterval(() => {
       const cutoff = Date.now() - 8000;
       setRemotePlayersMap((prev) => {
@@ -720,7 +746,6 @@ export default function App() {
     return list;
   }, [rawSourceRows]);
 
-  // Výpočet darované částky aktuálního uživatele (pro odemčení VIP odměn v Garáži)
   const userDonatedUsd = useMemo(() => {
     if (demoMode) return 20;
     const clean = previewName.trim().toLowerCase().replace(/^@/, "");
@@ -763,7 +788,6 @@ export default function App() {
   const handlePlayerTransformChange = useCallback(
     (transform) => {
       setPlayerPos({ x: transform.x, z: transform.z });
-      latestTransformRef.current = transform;
 
       const now = Date.now();
       if (channelRef.current && now - lastBroadcastRef.current >= 100) {
@@ -860,14 +884,9 @@ export default function App() {
   const selectedRow = Math.floor((selectedPlot - 1) / COLS);
   const selectedCol = (selectedPlot - 1) % COLS;
 
-  const playerRadarCol = Math.max(
-    0,
-    Math.min(COLS, playerPos.x / TILE_STEP + COLS / 2)
-  );
-  const playerRadarRow = Math.max(
-    0,
-    Math.min(ROWS, playerPos.z / TILE_STEP + ROWS / 2)
-  );
+  // Radar pokrývá celý rozšířený ostrov (-34 až +34)
+  const playerRadarX = Math.max(2, Math.min(38, ((playerPos.x + 34) / 68) * 36 + 2));
+  const playerRadarZ = Math.max(2, Math.min(38, ((playerPos.z + 34) / 68) * 36 + 2));
 
   const handleOpenDeedCard = () => {
     const ownerHandle = selectedDonor ? selectedDonor.name : formattedHandle;
@@ -950,6 +969,7 @@ export default function App() {
 
   const handleSpawnPersonalCar = (color) => {
     setShowGarageModal(false);
+    setActiveShopModal(null);
     if (!streetMode) {
       setStreetMode(true);
       setTimeout(() => {
@@ -963,6 +983,7 @@ export default function App() {
   const handleSpawnHelicopter = () => {
     if (!helicopterUnlocked) return;
     setShowGarageModal(false);
+    setActiveShopModal(null);
     if (!streetMode) {
       setStreetMode(true);
       setTimeout(() => {
@@ -972,6 +993,17 @@ export default function App() {
       playerInputRef.current.spawnHelicopter?.();
     }
   };
+
+  const handleBuyDinerItem = (cost, durationSec) => {
+    if (viceCoins < cost && !demoMode) return;
+    if (!demoMode) setViceCoins((c) => c - cost);
+    setBoostUntil(Date.now() + durationSec * 1000);
+    setBoostLeftSec(durationSec);
+    setActiveShopModal(null);
+    playSfx("build");
+  };
+
+  const activeShopInfo = CITY_SHOPS.find((s) => s.id === vehicleState.shopId);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-white select-none font-sans">
@@ -989,6 +1021,7 @@ export default function App() {
         resetSignal={resetSignal}
         streetMode={streetMode}
         playerSkin={playerSkin}
+        speedBoostActive={boostLeftSec > 0}
         remotePlayers={remotePlayersList}
         playerInputRef={playerInputRef}
         onSelectPlot={(plot) => {
@@ -1039,7 +1072,7 @@ export default function App() {
                       ? "WASD fly • Space ascend • Shift descend • E/F exit"
                       : vehicleState.mode === "car"
                         ? "WASD drive • Space drift • Shift horn • E/F exit"
-                        : "WASD walk • Shift sprint • Space jump • E/F steal vehicle"
+                        : "WASD walk • Shift sprint • Space jump • E/F enter shop or vehicle"
                     : "Drag to orbit 360° • Scroll to zoom • Click any plot"}
                 </p>
               </div>
@@ -1134,8 +1167,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* Pravá horní tlačítka + počítadlo Vice Coinů */}
+            {/* Pravá horní tlačítka + počítadlo Vice Coinů + Boost */}
             <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
+              {boostLeftSec > 0 && (
+                <div className="flex items-center gap-1 rounded-xl border border-pink-400 bg-pink-500/20 px-2.5 py-1.5 text-xs font-black text-pink-200 animate-pulse">
+                  <Zap className="h-3.5 w-3.5 text-pink-400" />
+                  <span>{boostLeftSec}s</span>
+                </div>
+              )}
+
               {streetMode && (
                 <div className="flex items-center gap-1.5 rounded-xl border border-amber-400/50 bg-slate-900/90 px-3 py-1.5 text-xs font-black text-amber-300 shadow-lg backdrop-blur-md">
                   <Coins className="h-4 w-4 text-amber-400" />
@@ -1220,10 +1260,18 @@ export default function App() {
             </div>
           </header>
 
-          {/* Plovoucí akční výzva pro nastoupení / vystoupení z vozidla */}
+          {/* Plovoucí akční výzva pro vstup do obchodu nebo nastoupení do vozidla */}
           {streetMode && (vehicleState.canEnter || vehicleState.mode !== "foot") && (
             <div className="pointer-events-none fixed top-20 left-1/2 z-20 -translate-x-1/2">
-              {vehicleState.canEnter ? (
+              {vehicleState.canEnter === "shop" && activeShopInfo ? (
+                <button
+                  onClick={() => playerInputRef.current.toggleVehicle?.()}
+                  className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-pink-400 bg-slate-950/95 px-4 py-2 text-xs font-black text-pink-200 shadow-[0_0_25px_rgba(236,72,153,0.5)] hover:scale-105 transition"
+                >
+                  <Store className="h-4 w-4 text-pink-400" />
+                  <span>ENTER {activeShopInfo.name.toUpperCase()} (Press E / F)</span>
+                </button>
+              ) : vehicleState.canEnter ? (
                 <button
                   onClick={() => playerInputRef.current.toggleVehicle?.()}
                   className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-amber-300 bg-slate-950/95 px-4 py-2 text-xs font-black text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.45)] hover:scale-105 transition"
@@ -1296,7 +1344,7 @@ export default function App() {
               )
             ))}
 
-          {/* Pravý HUD sloupec: GTA Radar + Top 5 stavitelů */}
+          {/* Pravý HUD sloupec: GTA Radar (včetně obchodů a Ocean Drive) + Top 5 */}
           <div className="pointer-events-none absolute top-24 right-3 sm:right-4 z-10 flex flex-col items-end gap-2.5">
             <div
               onClick={handleRadarClick}
@@ -1304,45 +1352,66 @@ export default function App() {
               className="pointer-events-auto relative h-24 w-24 sm:h-32 sm:w-32 cursor-crosshair overflow-hidden rounded-2xl border-2 border-cyan-400/60 bg-slate-950/90 p-1.5 shadow-[0_0_20px_rgba(6,182,212,0.3)] backdrop-blur-md"
             >
               <svg viewBox="0 0 40 40" className="h-full w-full">
-                <rect x="0" y="0" width="40" height="40" rx="2" fill="#0F172A" />
-                <rect x="19" y="0" width="2" height="40" fill="#334155" />
-                <rect x="0" y="19" width="40" height="2" fill="#334155" />
+                {/* Ostrov + okružní silnice Ocean Drive */}
+                <rect x="1" y="1" width="38" height="38" rx="3" fill="#0F172A" />
+                <rect
+                  x="3"
+                  y="3"
+                  width="34"
+                  height="34"
+                  fill="none"
+                  stroke="#334155"
+                  strokeWidth="1.4"
+                />
+                <rect x="19.2" y="3" width="1.6" height="34" fill="#334155" />
+                <rect x="3" y="19.2" width="34" height="1.6" fill="#334155" />
+
+                {/* 4 Obchody na radaru (růžové čtverečky) */}
+                {CITY_SHOPS.map((s) => {
+                  const sc = ((s.x + 34) / 68) * 36 + 2;
+                  const sr = ((s.z + 34) / 68) * 36 + 2;
+                  return (
+                    <rect
+                      key={s.id}
+                      x={sc - 1.1}
+                      y={sr - 1.1}
+                      width="2.2"
+                      height="2.2"
+                      fill="#EC4899"
+                    />
+                  );
+                })}
+
+                {/* Budovy dárců */}
                 {activeDonors.map((d) => {
-                  const r = Math.floor((d.plot - 1) / COLS);
-                  const c = (d.plot - 1) % COLS;
+                  const r = 5 + (((d.plot - 1) / COLS) / COLS) * 30;
+                  const c = 5 + (((d.plot - 1) % COLS) / COLS) * 30;
                   const color =
                     d.amount >= 10 ? "#10B981" : d.amount >= 5 ? "#EC4899" : "#38BDF8";
                   return (
-                    <rect key={d.plot} x={c} y={r} width="1.2" height="1.2" fill={color} />
+                    <rect key={d.plot} x={c} y={r} width="1.1" height="1.1" fill={color} />
                   );
                 })}
-                <circle cx="0.8" cy="0.8" r="1.4" fill="#FBBF24" />
+
                 <circle
-                  cx={selectedCol + 0.5}
-                  cy={selectedRow + 0.5}
-                  r="1.6"
+                  cx={5 + (selectedCol / COLS) * 30}
+                  cy={5 + (selectedRow / ROWS) * 30}
+                  r="1.5"
                   fill="none"
                   stroke="#FFFFFF"
                   strokeWidth="0.8"
                 />
-                {/* Ostatní online hráči na radaru */}
+
                 {remotePlayersList.map((rp) => {
-                  const rc = Math.max(0, Math.min(COLS, rp.x / TILE_STEP + COLS / 2));
-                  const rr = Math.max(0, Math.min(ROWS, rp.z / TILE_STEP + ROWS / 2));
-                  return (
-                    <circle
-                      key={rp.id}
-                      cx={rc}
-                      cy={rr}
-                      r="1.5"
-                      fill="#FB923C"
-                    />
-                  );
+                  const rc = Math.max(2, Math.min(38, ((rp.x + 34) / 68) * 36 + 2));
+                  const rr = Math.max(2, Math.min(38, ((rp.z + 34) / 68) * 36 + 2));
+                  return <circle key={rp.id} cx={rc} cy={rr} r="1.4" fill="#FB923C" />;
                 })}
+
                 {streetMode && (
                   <circle
-                    cx={playerRadarCol}
-                    cy={playerRadarRow}
+                    cx={playerRadarX}
+                    cy={playerRadarZ}
                     r="1.8"
                     fill={
                       vehicleState.mode === "heli"
@@ -1424,6 +1493,8 @@ export default function App() {
                   >
                     {vehicleState.mode !== "foot" ? (
                       <LogOut className="h-6 w-6" />
+                    ) : vehicleState.canEnter === "shop" ? (
+                      <Store className="h-6 w-6 text-pink-400" />
                     ) : vehicleState.canEnter === "heli" ? (
                       <Rocket className="h-6 w-6" />
                     ) : (
@@ -1681,6 +1752,131 @@ export default function App() {
             </div>
           )}
         </>
+      )}
+
+      {/* Modální okno: Obchod (Malibu Neon Diner nebo Vice Motors Showroom) */}
+      {activeShopModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-3xl border-2 border-cyan-400/60 bg-slate-900 p-6 shadow-2xl">
+            <button
+              onClick={() => setActiveShopModal(null)}
+              className="absolute top-4 right-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center justify-between pr-8">
+              <div>
+                <div className="text-xs font-black uppercase tracking-wider text-pink-400">
+                  Ocean Drive Storefront
+                </div>
+                <h2 className="mt-0.5 text-2xl font-black text-white">
+                  {activeShopModal === "diner"
+                    ? "Malibu Neon Diner"
+                    : "Vice Motors Showroom"}
+                </h2>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-xl border border-amber-400/50 bg-amber-500/15 px-3 py-1.5 text-xs font-black text-amber-300">
+                <Coins className="h-4 w-4 text-amber-400" />
+                <span>{viceCoins}</span>
+              </div>
+            </div>
+
+            {activeShopModal === "diner" ? (
+              <div className="mt-4 space-y-2.5 text-xs">
+                <p className="text-slate-300">
+                  Spend Vice Coins collected around the island for temporary movement & jump boosts!
+                </p>
+
+                <button
+                  type="button"
+                  disabled={!demoMode && viceCoins < 3}
+                  onClick={() => handleBuyDinerItem(3, 45)}
+                  className="flex w-full items-center justify-between rounded-2xl border border-pink-400/50 bg-slate-950 p-3.5 text-left hover:bg-slate-800 disabled:opacity-50 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/20 text-pink-300">
+                      <Coffee className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-white">Vice Double Espresso</div>
+                      <div className="text-[11px] text-slate-400">
+                        +45% Sprint Speed & Super Jump for 45s
+                      </div>
+                    </div>
+                  </div>
+                  <span className="rounded-xl bg-amber-400 px-3 py-1.5 font-black text-slate-950">
+                    3 Coins
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!demoMode && viceCoins < 6}
+                  onClick={() => handleBuyDinerItem(6, 120)}
+                  className="flex w-full items-center justify-between rounded-2xl border border-cyan-400/50 bg-slate-950 p-3.5 text-left hover:bg-slate-800 disabled:opacity-50 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-300">
+                      <Zap className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-white">Neon Energy Combo</div>
+                      <div className="text-[11px] text-slate-400">
+                        +45% Sprint Speed & Super Jump for 2 full minutes
+                      </div>
+                    </div>
+                  </div>
+                  <span className="rounded-xl bg-amber-400 px-3 py-1.5 font-black text-slate-950">
+                    6 Coins
+                  </span>
+                </button>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-2.5 text-xs">
+                <p className="text-slate-300">
+                  Pick a custom paint job and drive out of the showroom immediately!
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { name: "Miami White", hex: "#FFFFFF", cost: 0 },
+                    { name: "Neon Pink", hex: "#F472B6", cost: 5 },
+                    { name: "Electric Cyan", hex: "#22D3EE", cost: 5 },
+                    { name: "24K Gold", hex: "#FBBF24", cost: 10 },
+                  ].map((paint) => {
+                    const canAfford =
+                      demoMode || userDonatedUsd >= 5 || viceCoins >= paint.cost;
+                    return (
+                      <button
+                        key={paint.name}
+                        type="button"
+                        disabled={!canAfford}
+                        onClick={() => {
+                          if (!demoMode && userDonatedUsd < 5 && paint.cost > 0) {
+                            setViceCoins((c) => Math.max(0, c - paint.cost));
+                          }
+                          handleSpawnPersonalCar(paint.hex);
+                        }}
+                        className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-950 p-3 hover:border-cyan-400 disabled:opacity-50 transition"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-4 w-4 rounded-full border border-white/40"
+                            style={{ backgroundColor: paint.hex }}
+                          />
+                          <span className="font-black text-white">{paint.name}</span>
+                        </div>
+                        <span className="text-[10px] font-black text-amber-300">
+                          {paint.cost === 0 ? "FREE" : `${paint.cost}c`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Modální okno: Ko-fi VIP Garáž, Skiny & Vrtulník */}
