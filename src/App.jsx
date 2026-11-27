@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 import {
+  ArrowDown,
   ArrowUp,
   Award,
   Car,
@@ -16,26 +18,31 @@ import {
   Gamepad2,
   HelpCircle,
   Loader2,
+  Lock,
   LogOut,
   Map as MapIcon,
   MapPin,
   Moon,
   Navigation,
+  Rocket,
   RotateCcw,
   Search,
   Share2,
+  Shirt,
   Shuffle,
   Sparkles,
   Sun,
   Sunset,
   Trophy,
+  Unlock,
   User,
+  Users,
   Volume2,
   VolumeX,
   X,
   Zap,
 } from "lucide-react";
-import Island3D from "./Island3D";
+import Island3D, { PLAYER_SKINS } from "./Island3D";
 
 const FALLBACK_DONORS = [];
 
@@ -77,6 +84,11 @@ const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || "")
   .replace(/\/rest\/v1$/i, "");
 const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
 
+const supabase =
+  SUPABASE_URL && SUPABASE_ANON_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+
 const MILESTONES = [
   { amount: 300, label: "$300" },
   { amount: 750, label: "$750" },
@@ -91,6 +103,13 @@ const VIP_PLOTS = {
   1337: { label: "Elite Coder Tower", short: "#1337" },
   1600: { label: "Final Boss Penthouse", short: "#1600" },
 };
+
+const SKIN_UNLOCK_RULES = [
+  { id: "tourist", minUsd: 0, minCoins: 0, reqLabel: "Free Starter" },
+  { id: "hacker", minUsd: 1, minCoins: 10, reqLabel: "$1+ Donor or 10 Coins" },
+  { id: "vip", minUsd: 5, minCoins: 20, reqLabel: "$5+ Donor or 20 Coins" },
+  { id: "kingpin", minUsd: 10, minCoins: 35, reqLabel: "$10+ Donor or 35 Coins" },
+];
 
 function getDistrict(plotNum) {
   const idx = plotNum - 1;
@@ -312,7 +331,6 @@ function generateDeedCardDataUrl({
   return canvas.toDataURL("image/png");
 }
 
-// Dotykový joystick pro chůzi i řízení auta na mobilu
 function TouchJoystick({ onMove }) {
   const baseRef = useRef(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
@@ -387,13 +405,30 @@ function TouchJoystick({ onMove }) {
 export default function App() {
   const audioCtxRef = useRef(null);
   const prevCountRef = useRef(null);
+  const sessionIdRef = useRef(
+    `player_${Math.random().toString(36).slice(2, 10)}`
+  );
+  const channelRef = useRef(null);
+  const lastBroadcastRef = useRef(0);
+  const latestTransformRef = useRef({
+    x: 0,
+    y: 0.14,
+    z: 3.6,
+    yaw: Math.PI,
+    vehicleMode: "foot",
+    carColor: "#FFFFFF",
+  });
+
   const playerInputRef = useRef({
     moveX: 0,
     moveY: 0,
     sprint: false,
     jump: false,
+    descend: false,
     horn: false,
     toggleVehicle: null,
+    spawnPersonalCar: null,
+    spawnHelicopter: null,
   });
 
   const [theme, setTheme] = useState("night");
@@ -404,11 +439,15 @@ export default function App() {
   const [playerPos, setPlayerPos] = useState({ x: 0, z: 3.6 });
   const [touchSprint, setTouchSprint] = useState(false);
   const [viceCoins, setViceCoins] = useState(0);
+  const [playerSkin, setPlayerSkin] = useState("tourist");
+  const [remotePlayersMap, setRemotePlayersMap] = useState({});
+
   const [vehicleState, setVehicleState] = useState({
-    inCar: false,
-    canEnter: false,
+    mode: "foot",
+    canEnter: null,
     carColor: null,
     speedKmh: 0,
+    altitude: 0,
   });
 
   const [demoMode, setDemoMode] = useState(
@@ -427,6 +466,7 @@ export default function App() {
   const [selectedPlot, setSelectedPlot] = useState(1);
   const [hoveredPlot, setHoveredPlot] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showGarageModal, setShowGarageModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showDeedModal, setShowDeedModal] = useState(false);
   const [deedImageUrl, setDeedImageUrl] = useState("");
@@ -506,6 +546,84 @@ export default function App() {
       }
     },
     [soundOn]
+  );
+
+  const formattedHandle = previewName.trim()
+    ? previewName.trim().startsWith("@")
+      ? previewName.trim()
+      : `@${previewName.trim()}`
+    : "@your_name";
+
+  // Supabase Realtime Multiplayer (Presence + Broadcast)
+  useEffect(() => {
+    if (!supabase) return;
+
+    const myId = sessionIdRef.current;
+    const channel = supabase.channel("vice-city-live-island", {
+      config: {
+        presence: { key: myId },
+        broadcast: { self: false },
+      },
+    });
+
+    channel
+      .on("presence", { event: "leave" }, ({ key }) => {
+        if (!key) return;
+        setRemotePlayersMap((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+      })
+      .on("broadcast", { event: "player_move" }, ({ payload }) => {
+        if (!payload || !payload.id || payload.id === myId) return;
+        setRemotePlayersMap((prev) => ({
+          ...prev,
+          [payload.id]: {
+            ...payload,
+            updatedAt: Date.now(),
+          },
+        }));
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({
+            id: myId,
+            name: previewName.trim() ? formattedHandle : "@visitor",
+            onlineAt: Date.now(),
+          });
+        }
+      });
+
+    channelRef.current = channel;
+
+    // Pravidelné odstraňování neaktivních hráčů po 8 sekundách
+    const cleanupTimer = setInterval(() => {
+      const cutoff = Date.now() - 8000;
+      setRemotePlayersMap((prev) => {
+        let changed = false;
+        const next = {};
+        for (const [k, val] of Object.entries(prev)) {
+          if (val.updatedAt >= cutoff) {
+            next[k] = val;
+          } else {
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 3000);
+
+    return () => {
+      clearInterval(cleanupTimer);
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, [formattedHandle, previewName]);
+
+  const remotePlayersList = useMemo(
+    () => Object.values(remotePlayersMap),
+    [remotePlayersMap]
   );
 
   // Klávesové zkratky: "H" = skrytí HUDu, "V" = přepnutí Street Mode / Map View
@@ -602,6 +720,19 @@ export default function App() {
     return list;
   }, [rawSourceRows]);
 
+  // Výpočet darované částky aktuálního uživatele (pro odemčení VIP odměn v Garáži)
+  const userDonatedUsd = useMemo(() => {
+    if (demoMode) return 20;
+    const clean = previewName.trim().toLowerCase().replace(/^@/, "");
+    if (!clean) return 0;
+    return rawSourceRows
+      .filter((d) => (d.name || "").toLowerCase().replace(/^@/, "") === clean)
+      .reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  }, [demoMode, previewName, rawSourceRows]);
+
+  const helicopterUnlocked =
+    demoMode || userDonatedUsd >= 10 || viceCoins >= 25;
+
   const latestDonor = useMemo(() => {
     if (activeDonors.length === 0) return null;
     return activeDonors[activeDonors.length - 1];
@@ -629,11 +760,33 @@ export default function App() {
   const xboxPct = Math.min(100, (totalRaised / XBOX_GOAL_USD) * 100);
   const xboxUnlocked = totalRaised >= XBOX_GOAL_USD;
 
-  const formattedHandle = previewName.trim()
-    ? previewName.trim().startsWith("@")
-      ? previewName.trim()
-      : `@${previewName.trim()}`
-    : "@your_name";
+  const handlePlayerTransformChange = useCallback(
+    (transform) => {
+      setPlayerPos({ x: transform.x, z: transform.z });
+      latestTransformRef.current = transform;
+
+      const now = Date.now();
+      if (channelRef.current && now - lastBroadcastRef.current >= 100) {
+        lastBroadcastRef.current = now;
+        channelRef.current.send({
+          type: "broadcast",
+          event: "player_move",
+          payload: {
+            id: sessionIdRef.current,
+            name: previewName.trim() ? formattedHandle : "@visitor",
+            skin: playerSkin,
+            x: transform.x,
+            y: transform.y,
+            z: transform.z,
+            yaw: transform.yaw,
+            vehicleMode: transform.vehicleMode,
+            carColor: transform.carColor,
+          },
+        });
+      }
+    },
+    [formattedHandle, playerSkin, previewName]
+  );
 
   const focusPlot = (plotNum) => {
     setSelectedPlot(plotNum);
@@ -795,6 +948,31 @@ export default function App() {
     setViceCoins((c) => c + 1);
   }, []);
 
+  const handleSpawnPersonalCar = (color) => {
+    setShowGarageModal(false);
+    if (!streetMode) {
+      setStreetMode(true);
+      setTimeout(() => {
+        playerInputRef.current.spawnPersonalCar?.(color);
+      }, 80);
+    } else {
+      playerInputRef.current.spawnPersonalCar?.(color);
+    }
+  };
+
+  const handleSpawnHelicopter = () => {
+    if (!helicopterUnlocked) return;
+    setShowGarageModal(false);
+    if (!streetMode) {
+      setStreetMode(true);
+      setTimeout(() => {
+        playerInputRef.current.spawnHelicopter?.();
+      }, 80);
+    } else {
+      playerInputRef.current.spawnHelicopter?.();
+    }
+  };
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-white select-none font-sans">
       <Island3D
@@ -810,13 +988,15 @@ export default function App() {
         focusSignal={focusSignal}
         resetSignal={resetSignal}
         streetMode={streetMode}
+        playerSkin={playerSkin}
+        remotePlayers={remotePlayersList}
         playerInputRef={playerInputRef}
         onSelectPlot={(plot) => {
           setSelectedPlot(plot);
           if (!streetMode) playSfx("select");
         }}
         onHoverPlot={setHoveredPlot}
-        onPlayerPosChange={setPlayerPos}
+        onPlayerTransformChange={handlePlayerTransformChange}
         onVehicleStateChange={setVehicleState}
         onCoinCollect={handleCoinCollect}
         onPlaySfx={playSfx}
@@ -837,24 +1017,29 @@ export default function App() {
         <>
           {/* Horní lišta */}
           <header className="pointer-events-none absolute top-0 left-0 right-0 z-10 flex flex-wrap items-center justify-between gap-2 p-3 sm:p-4">
-            <div className="pointer-events-auto flex items-center gap-2.5 rounded-2xl border border-cyan-400/30 bg-slate-900/90 px-3 py-2 shadow-2xl backdrop-blur-md">
+            <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-cyan-400/30 bg-slate-900/90 px-3 py-2 shadow-2xl backdrop-blur-md">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-400 font-black text-slate-950 shadow-lg">
                 3D
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <h1 className="text-sm font-black tracking-tight sm:text-base">
                     BUILD VICE CITY
                   </h1>
-                  <span className="hidden sm:inline rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300 border border-emerald-400/40">
-                    {TOTAL_PLOTS.toLocaleString()} PLOTS
-                  </span>
+                  {supabase && (
+                    <span className="flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 text-[10px] font-black text-orange-300 border border-orange-400/40">
+                      <Users className="h-3 w-3" />
+                      {remotePlayersList.length + 1}
+                    </span>
+                  )}
                 </div>
                 <p className="hidden text-[11px] text-slate-400 md:block">
                   {streetMode
-                    ? vehicleState.inCar
-                      ? "WASD drive • Space drift • Shift horn • E/F exit car"
-                      : "WASD walk • Shift sprint • Space jump • E/F steal car"
+                    ? vehicleState.mode === "heli"
+                      ? "WASD fly • Space ascend • Shift descend • E/F exit"
+                      : vehicleState.mode === "car"
+                        ? "WASD drive • Space drift • Shift horn • E/F exit"
+                        : "WASD walk • Shift sprint • Space jump • E/F steal vehicle"
                     : "Drag to orbit 360° • Scroll to zoom • Click any plot"}
                 </p>
               </div>
@@ -883,10 +1068,22 @@ export default function App() {
                   </>
                 )}
               </button>
+
+              <button
+                onClick={() => {
+                  playSfx("select");
+                  setShowGarageModal(true);
+                }}
+                title="Open Ko-fi VIP Garage, Outfits & Helicopter"
+                className="flex items-center gap-1.5 rounded-xl border border-pink-400/50 bg-pink-500/15 px-2.5 py-2 text-xs font-black text-pink-200 hover:bg-pink-500/25 transition"
+              >
+                <Shirt className="h-4 w-4 text-pink-400" />
+                <span className="hidden sm:inline">Garage</span>
+              </button>
             </div>
 
             {/* Ukazatel cíle s milníky */}
-            <div className="pointer-events-auto hidden md:flex flex-1 max-w-md flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
+            <div className="pointer-events-auto hidden xl:flex flex-1 max-w-md flex-col gap-1.5 rounded-2xl border border-emerald-400/30 bg-slate-900/90 px-4 py-2 shadow-2xl backdrop-blur-md">
               <div className="flex items-center justify-between gap-2 text-xs font-extrabold">
                 <span className="flex items-center gap-1 text-emerald-300">
                   <DollarSign className="h-3.5 w-3.5" />
@@ -957,7 +1154,7 @@ export default function App() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Find @user or #420..."
-                    className="w-24 bg-transparent px-2 text-xs text-white placeholder-slate-400 focus:outline-none sm:w-36"
+                    className="w-24 bg-transparent px-2 text-xs text-white placeholder-slate-400 focus:outline-none sm:w-32"
                   />
                 </form>
               )}
@@ -981,20 +1178,11 @@ export default function App() {
                 className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900/90 px-2.5 py-2 text-xs font-bold text-slate-200 hover:border-pink-400 transition"
               >
                 {theme === "night" ? (
-                  <>
-                    <Moon className="h-4 w-4 text-cyan-300" />
-                    <span className="hidden lg:inline">Night</span>
-                  </>
+                  <Moon className="h-4 w-4 text-cyan-300" />
                 ) : theme === "sunset" ? (
-                  <>
-                    <Sunset className="h-4 w-4 text-pink-400" />
-                    <span className="hidden lg:inline">Sunset</span>
-                  </>
+                  <Sunset className="h-4 w-4 text-pink-400" />
                 ) : (
-                  <>
-                    <Sun className="h-4 w-4 text-amber-300" />
-                    <span className="hidden lg:inline">Day</span>
-                  </>
+                  <Sun className="h-4 w-4 text-amber-300" />
                 )}
               </button>
 
@@ -1032,21 +1220,32 @@ export default function App() {
             </div>
           </header>
 
-          {/* Plovoucí akční výzva uprostřed pro nastoupení / vystoupení z auta */}
-          {streetMode && (vehicleState.canEnter || vehicleState.inCar) && (
+          {/* Plovoucí akční výzva pro nastoupení / vystoupení z vozidla */}
+          {streetMode && (vehicleState.canEnter || vehicleState.mode !== "foot") && (
             <div className="pointer-events-none fixed top-20 left-1/2 z-20 -translate-x-1/2">
               {vehicleState.canEnter ? (
                 <button
                   onClick={() => playerInputRef.current.toggleVehicle?.()}
                   className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-amber-300 bg-slate-950/95 px-4 py-2 text-xs font-black text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.45)] hover:scale-105 transition"
                 >
-                  <Car className="h-4 w-4 text-amber-400" />
-                  <span>STEAL CAR (Press E / F)</span>
+                  {vehicleState.canEnter === "heli" ? (
+                    <>
+                      <Rocket className="h-4 w-4 text-pink-400" />
+                      <span>BOARD CHOPPER (Press E / F)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Car className="h-4 w-4 text-amber-400" />
+                      <span>STEAL CAR (Press E / F)</span>
+                    </>
+                  )}
                 </button>
               ) : (
                 <div className="pointer-events-auto flex items-center gap-2.5 rounded-full border border-cyan-400/60 bg-slate-950/90 px-4 py-1.5 text-xs font-black text-white shadow-xl backdrop-blur-md">
                   <span className="font-mono text-cyan-300">
-                    {vehicleState.speedKmh} KM/H
+                    {vehicleState.mode === "heli"
+                      ? `ALT ${vehicleState.altitude}M • ${vehicleState.speedKmh} KM/H`
+                      : `${vehicleState.speedKmh} KM/H`}
                   </span>
                   <span className="text-slate-600">•</span>
                   <button
@@ -1054,14 +1253,14 @@ export default function App() {
                     className="flex items-center gap-1 text-pink-400 hover:text-pink-300"
                   >
                     <LogOut className="h-3.5 w-3.5" />
-                    <span>Exit Car (E / F)</span>
+                    <span>Exit (E / F)</span>
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* Banner pro prvního dárce NEBO živý banner posledního dárce (jen v Map View) */}
+          {/* Banner posledního dárce (jen v Map View) */}
           {!streetMode &&
             (!demoMode && !loadingDonors && totalRaised === 0 ? (
               <div className="pointer-events-none absolute top-20 left-1/2 z-10 -translate-x-1/2 w-max max-w-[94vw]">
@@ -1126,12 +1325,32 @@ export default function App() {
                   stroke="#FFFFFF"
                   strokeWidth="0.8"
                 />
+                {/* Ostatní online hráči na radaru */}
+                {remotePlayersList.map((rp) => {
+                  const rc = Math.max(0, Math.min(COLS, rp.x / TILE_STEP + COLS / 2));
+                  const rr = Math.max(0, Math.min(ROWS, rp.z / TILE_STEP + ROWS / 2));
+                  return (
+                    <circle
+                      key={rp.id}
+                      cx={rc}
+                      cy={rr}
+                      r="1.5"
+                      fill="#FB923C"
+                    />
+                  );
+                })}
                 {streetMode && (
                   <circle
                     cx={playerRadarCol}
                     cy={playerRadarRow}
                     r="1.8"
-                    fill={vehicleState.inCar ? "#F472B6" : "#22D3EE"}
+                    fill={
+                      vehicleState.mode === "heli"
+                        ? "#EC4899"
+                        : vehicleState.mode === "car"
+                          ? "#FACC15"
+                          : "#22D3EE"
+                    }
                     stroke="#FFFFFF"
                     strokeWidth="0.7"
                   />
@@ -1139,7 +1358,13 @@ export default function App() {
               </svg>
               <div className="pointer-events-none absolute bottom-1 left-1.5 flex items-center gap-0.5 rounded bg-slate-950/80 px-1 text-[9px] font-black tracking-wider text-cyan-300">
                 <Navigation className="h-2.5 w-2.5" />{" "}
-                {streetMode ? (vehicleState.inCar ? "CAR" : "YOU") : "3D RADAR"}
+                {streetMode
+                  ? vehicleState.mode === "heli"
+                    ? "HELI"
+                    : vehicleState.mode === "car"
+                      ? "CAR"
+                      : "YOU"
+                  : "3D RADAR"}
               </div>
             </div>
 
@@ -1179,7 +1404,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Mobilní ovládání + spodní skener parcely ve Street Mode */}
+          {/* Mobilní ovládání + spodní lišta ve Street Mode */}
           {streetMode ? (
             <>
               <div className="pointer-events-auto fixed bottom-28 left-4 z-20 md:hidden">
@@ -1192,13 +1417,15 @@ export default function App() {
               </div>
 
               <div className="pointer-events-auto fixed bottom-28 right-4 z-20 flex flex-col gap-2.5 md:hidden">
-                {(vehicleState.canEnter || vehicleState.inCar) && (
+                {(vehicleState.canEnter || vehicleState.mode !== "foot") && (
                   <button
                     onClick={() => playerInputRef.current.toggleVehicle?.()}
                     className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-amber-300 bg-slate-950/90 text-amber-300 shadow-xl active:scale-95 touch-none"
                   >
-                    {vehicleState.inCar ? (
+                    {vehicleState.mode !== "foot" ? (
                       <LogOut className="h-6 w-6" />
+                    ) : vehicleState.canEnter === "heli" ? (
+                      <Rocket className="h-6 w-6" />
                     ) : (
                       <Car className="h-6 w-6" />
                     )}
@@ -1219,20 +1446,36 @@ export default function App() {
                   <ArrowUp className="h-6 w-6" />
                 </button>
 
-                <button
-                  onClick={() => {
-                    const next = !touchSprint;
-                    setTouchSprint(next);
-                    playerInputRef.current.sprint = next;
-                  }}
-                  className={`flex h-12 w-14 items-center justify-center rounded-2xl border text-[11px] font-black shadow-xl touch-none ${
-                    touchSprint
-                      ? "border-amber-400 bg-amber-400 text-slate-950"
-                      : "border-slate-700 bg-slate-950/85 text-slate-300"
-                  }`}
-                >
-                  <Zap className="h-4 w-4" />
-                </button>
+                {vehicleState.mode === "heli" ? (
+                  <button
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      playerInputRef.current.descend = true;
+                    }}
+                    onTouchEnd={(e) => {
+                      e.stopPropagation();
+                      playerInputRef.current.descend = false;
+                    }}
+                    className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-pink-400 bg-slate-950/85 text-pink-300 shadow-xl active:scale-95 touch-none"
+                  >
+                    <ArrowDown className="h-6 w-6" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      const next = !touchSprint;
+                      setTouchSprint(next);
+                      playerInputRef.current.sprint = next;
+                    }}
+                    className={`flex h-12 w-14 items-center justify-center rounded-2xl border text-[11px] font-black shadow-xl touch-none ${
+                      touchSprint
+                        ? "border-amber-400 bg-amber-400 text-slate-950"
+                        : "border-slate-700 bg-slate-950/85 text-slate-300"
+                    }`}
+                  >
+                    <Zap className="h-4 w-4" />
+                  </button>
+                )}
               </div>
 
               <div className="pointer-events-none fixed bottom-3 left-3 right-3 z-10 flex justify-center">
@@ -1253,24 +1496,33 @@ export default function App() {
                     </div>
                   </div>
 
-                  {!selectedDonor ? (
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
-                      onClick={() => {
-                        playSfx("build");
-                        setShowModal(true);
-                      }}
-                      className="shrink-0 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-3.5 py-2 text-xs font-black text-slate-950 shadow-lg hover:brightness-110 transition"
+                      onClick={() => setShowGarageModal(true)}
+                      className="rounded-xl border border-pink-400/50 bg-pink-500/20 px-3 py-2 text-xs font-black text-pink-200"
                     >
-                      Claim ($1+)
+                      Garage
                     </button>
-                  ) : (
-                    <button
-                      onClick={handleOpenDeedCard}
-                      className="shrink-0 rounded-xl border border-pink-400/50 bg-pink-500/20 px-3 py-2 text-xs font-black text-pink-200"
-                    >
-                      Deed
-                    </button>
-                  )}
+
+                    {!selectedDonor ? (
+                      <button
+                        onClick={() => {
+                          playSfx("build");
+                          setShowModal(true);
+                        }}
+                        className="rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-3.5 py-2 text-xs font-black text-slate-950 shadow-lg hover:brightness-110 transition"
+                      >
+                        Claim ($1+)
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleOpenDeedCard}
+                        className="rounded-xl border border-cyan-400/50 bg-cyan-500/20 px-3 py-2 text-xs font-black text-cyan-200"
+                      >
+                        Deed
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </>
@@ -1431,6 +1683,168 @@ export default function App() {
         </>
       )}
 
+      {/* Modální okno: Ko-fi VIP Garáž, Skiny & Vrtulník */}
+      {showGarageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="relative max-h-[88vh] w-full max-w-md overflow-y-auto rounded-3xl border-2 border-pink-400/50 bg-slate-900 p-6 shadow-2xl">
+            <button
+              onClick={() => setShowGarageModal(false)}
+              className="absolute top-4 right-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-pink-400">
+              <Crown className="h-4 w-4" /> VIP Garage & Character Wardrobe
+            </div>
+            <h2 className="mt-1 text-2xl font-black text-white">
+              Vice City Garage
+            </h2>
+
+            <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-950 p-3 text-xs">
+              <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                Verify your Ko-fi @username to unlock donor perks:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={previewName}
+                  onChange={(e) => setPreviewName(e.target.value)}
+                  placeholder="@your_username"
+                  className="flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+                />
+                <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1.5 font-mono text-xs font-black text-emerald-300">
+                  ${userDonatedUsd} • {viceCoins}c
+                </div>
+              </div>
+            </div>
+
+            {/* Výběr skinů postavy */}
+            <div className="mt-4">
+              <div className="text-xs font-black uppercase tracking-wider text-cyan-300 mb-2">
+                1. Character Outfits
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {SKIN_UNLOCK_RULES.map((rule) => {
+                  const skin = PLAYER_SKINS[rule.id];
+                  const unlocked =
+                    demoMode ||
+                    userDonatedUsd >= rule.minUsd ||
+                    viceCoins >= rule.minCoins;
+                  const active = playerSkin === rule.id;
+
+                  return (
+                    <button
+                      key={rule.id}
+                      type="button"
+                      disabled={!unlocked}
+                      onClick={() => {
+                        setPlayerSkin(rule.id);
+                        playSfx("build");
+                      }}
+                      className={`flex flex-col items-start rounded-2xl border p-3 text-left transition ${
+                        active
+                          ? "border-cyan-400 bg-cyan-400/15"
+                          : unlocked
+                            ? "border-slate-700 bg-slate-950 hover:border-pink-400"
+                            : "border-slate-800/80 bg-slate-950/50 opacity-60 cursor-not-allowed"
+                      }`}
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span
+                          className="h-4 w-4 rounded-full border border-white/40"
+                          style={{ backgroundColor: skin.torso }}
+                        />
+                        {unlocked ? (
+                          <Unlock className="h-3.5 w-3.5 text-emerald-400" />
+                        ) : (
+                          <Lock className="h-3.5 w-3.5 text-slate-500" />
+                        )}
+                      </div>
+                      <div className="mt-1.5 text-xs font-black text-white">
+                        {skin.name}
+                      </div>
+                      <div className="text-[10px] font-semibold text-slate-400">
+                        {unlocked ? (active ? "Equipped" : "Click to equip") : rule.reqLabel}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Přivolání osobního auta a vrtulníku */}
+            <div className="mt-4">
+              <div className="text-xs font-black uppercase tracking-wider text-amber-300 mb-2">
+                2. Spawn Personal Vehicles
+              </div>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleSpawnPersonalCar(userDonatedUsd >= 5 ? "#FBBF24" : "#FFFFFF")
+                  }
+                  className="flex w-full items-center justify-between rounded-2xl border border-cyan-400/50 bg-slate-950 p-3 text-left hover:bg-slate-800/80 transition"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-300">
+                      <Car className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-white">
+                        Personal Vice Supercar
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        Spawns right at your feet • Top speed boost
+                      </div>
+                    </div>
+                  </div>
+                  <span className="rounded-lg bg-cyan-400 px-2.5 py-1 text-[11px] font-black text-slate-950">
+                    Spawn
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!helicopterUnlocked}
+                  onClick={handleSpawnHelicopter}
+                  className={`flex w-full items-center justify-between rounded-2xl border p-3 text-left transition ${
+                    helicopterUnlocked
+                      ? "border-pink-400/60 bg-slate-950 hover:bg-slate-800/80"
+                      : "border-slate-800 bg-slate-950/50 opacity-65 cursor-not-allowed"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-pink-500/20 text-pink-300">
+                      <Rocket className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-white">
+                        Vice Chopper (Flyable Helicopter)
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {helicopterUnlocked
+                          ? "Fly over skyscrapers & land on helipads!"
+                          : "Unlocked for $10+ Donors or 25 Vice Coins"}
+                      </div>
+                    </div>
+                  </div>
+                  <span
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-black ${
+                      helicopterUnlocked
+                        ? "bg-gradient-to-r from-pink-500 to-amber-400 text-slate-950"
+                        : "bg-slate-800 text-slate-400"
+                    }`}
+                  >
+                    {helicopterUnlocked ? "Fly Now" : "Locked"}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modální okno pro Ko-fi */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
@@ -1450,7 +1864,7 @@ export default function App() {
               Claim Plot #{String(selectedPlot).padStart(4, "0")}
             </h2>
             <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
-              Your 3D building appears live on this island automatically after checkout and gets featured in our YouTube & TikTok series!
+              Your 3D building appears live on this island automatically after checkout and unlocks VIP Garage outfits & vehicles!
             </p>
 
             <div className="mt-4 space-y-3 rounded-2xl border border-slate-800 bg-slate-950 p-3.5 text-xs">
@@ -1630,13 +2044,13 @@ export default function App() {
                 </p>
                 <ul className="mt-1.5 list-disc pl-4 space-y-0.5 text-slate-300">
                   <li>
-                    <strong>$1 – $4:</strong> Beach Bungalow
+                    <strong>$1 – $4:</strong> Beach Bungalow + Neon Hacker Outfit
                   </li>
                   <li>
-                    <strong>$5 – $9:</strong> Art Deco Pool Villa (plus #0001 Founder Special)
+                    <strong>$5 – $9:</strong> Art Deco Pool Villa + Golden VIP Outfit
                   </li>
                   <li>
-                    <strong>$10+:</strong> Neon Glass Skyscraper with Helipad
+                    <strong>$10+:</strong> Neon Glass Skyscraper + Flyable Vice Chopper
                   </li>
                 </ul>
               </div>
@@ -1661,13 +2075,13 @@ export default function App() {
                 </h3>
                 <ul className="mt-1 list-disc pl-4 space-y-1 text-slate-300">
                   <li>
-                    <strong>Voluntary Creator Support:</strong> Payments made via Ko-fi are voluntary tips supporting content creation. 3D plots are cosmetic community acknowledgments and carry no monetary, ownership, or NFT value.
+                    <strong>Voluntary Creator Support:</strong> Payments made via Ko-fi are voluntary tips supporting content creation. 3D plots and virtual garage items are cosmetic community acknowledgments and carry no monetary, ownership, or NFT value.
                   </li>
                   <li>
                     <strong>Non-Refundable:</strong> Because digital plot allocation and 3D rendering are automated immediately upon payment, contributions are final and non-refundable.
                   </li>
                   <li>
-                    <strong>Content Moderation:</strong> Usernames or messages containing hate speech, slurs, harassment, or spam links will be masked or renamed while keeping your building active on the map. If you forgot your plot number at checkout, contact us with your Ko-fi receipt and we will assign an available plot.
+                    <strong>Content Moderation:</strong> Usernames or messages containing hate speech, slurs, harassment, or spam links will be masked or renamed while keeping your building active on the map.
                   </li>
                 </ul>
               </div>

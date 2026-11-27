@@ -20,12 +20,52 @@ const TOTAL_PLOTS = COLS * ROWS;
 const TILE_STEP = 1.12;
 const DEFAULT_VIP_PLOTS = {};
 
+export const PLAYER_SKINS = {
+  tourist: {
+    id: "tourist",
+    name: "Vice Tourist",
+    torso: "#06B6D4",
+    accent: "#F472B6",
+    pants: "#1D4ED8",
+    hair: "#1E1B4B",
+    shoes: "#F8FAFC",
+  },
+  hacker: {
+    id: "hacker",
+    name: "Neon Hacker",
+    torso: "#0F172A",
+    accent: "#10B981",
+    pants: "#020617",
+    hair: "#22D3EE",
+    shoes: "#10B981",
+  },
+  vip: {
+    id: "vip",
+    name: "Golden VIP",
+    torso: "#18181B",
+    accent: "#FBBF24",
+    pants: "#18181B",
+    hair: "#F59E0B",
+    shoes: "#FBBF24",
+  },
+  kingpin: {
+    id: "kingpin",
+    name: "Vice Kingpin",
+    torso: "#F8FAFC",
+    accent: "#EC4899",
+    pants: "#F1F5F9",
+    hair: "#334155",
+    shoes: "#EC4899",
+  },
+};
+
 const INITIAL_STREET_CARS = [
   { id: 0, axis: "x", dir: 1, lane: 0.46, baseSpeed: 5.2, offset: 0, color: "#F472B6" },
   { id: 1, axis: "x", dir: 1, lane: 0.46, baseSpeed: 4.5, offset: 22, color: "#FACC15" },
   { id: 2, axis: "x", dir: -1, lane: -0.46, baseSpeed: 5.5, offset: 11, color: "#38BDF8" },
   { id: 3, axis: "z", dir: 1, lane: -0.46, baseSpeed: 4.9, offset: 6, color: "#A855F7" },
   { id: 4, axis: "z", dir: -1, lane: 0.46, baseSpeed: 5.3, offset: 18, color: "#10B981" },
+  { id: 5, axis: "x", dir: 1, lane: 0.46, baseSpeed: 0, offset: 25, color: "#FFFFFF", isPersonal: true },
 ];
 
 const COIN_SPOTS = [
@@ -418,7 +458,7 @@ function PalmTrees3D({ castShadow = true }) {
 }
 
 // 4. Asfaltové bulváry + fontána + jachty + animovaný oceán
-function StaticWorldEnvironment({ theme, roadTex, plazaTex, waterTex, castShadow = true }) {
+function StaticWorldEnvironment({ roadTex, plazaTex, waterTex, castShadow = true }) {
   const boatsRef = useRef([]);
   const fountainRingRef = useRef(null);
   const islandSpan = COLS * TILE_STEP;
@@ -579,16 +619,109 @@ function CameraController({ focusSignal, selectedPlot, resetSignal }) {
   );
 }
 
-// 6. Kompletní GTA simulace: 5 kraditelných aut + Vice Coiny + 3D postava
+// 6. Živí multiplayer hráči v 3D světě
+function RemotePlayerEntity({ player }) {
+  const groupRef = useRef(null);
+  const rotorRef = useRef(null);
+  const targetPos = useMemo(() => new THREE.Vector3(player.x, player.y, player.z), []);
+  const skin = PLAYER_SKINS[player.skin] || PLAYER_SKINS.tourist;
+
+  targetPos.set(player.x, player.y, player.z);
+
+  useFrame(({ clock }, rawDelta) => {
+    const dt = Math.min(rawDelta, 0.05);
+    if (groupRef.current) {
+      groupRef.current.position.lerp(targetPos, Math.min(1, dt * 10));
+      let diff = player.yaw - groupRef.current.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      groupRef.current.rotation.y += diff * Math.min(1, dt * 10);
+    }
+    if (rotorRef.current) {
+      rotorRef.current.rotation.y = clock.getElapsedTime() * 24;
+    }
+  });
+
+  const labelY =
+    player.vehicleMode === "heli"
+      ? 1.15
+      : player.vehicleMode === "car"
+        ? 0.72
+        : 1.16;
+
+  return (
+    <group ref={groupRef} position={[player.x, player.y, player.z]}>
+      {player.vehicleMode === "heli" ? (
+        <group>
+          <mesh>
+            <boxGeometry args={[0.48, 0.34, 0.92]} />
+            <meshStandardMaterial color="#EC4899" metalness={0.6} roughness={0.2} />
+          </mesh>
+          <mesh position={[0, 0.04, -0.78]}>
+            <boxGeometry args={[0.12, 0.14, 0.72]} />
+            <meshStandardMaterial color="#1E1B4B" />
+          </mesh>
+          <mesh ref={rotorRef} position={[0, 0.26, 0]}>
+            <boxGeometry args={[1.65, 0.02, 0.1]} />
+            <meshBasicMaterial color="#22D3EE" />
+          </mesh>
+        </group>
+      ) : player.vehicleMode === "car" ? (
+        <group>
+          <mesh>
+            <boxGeometry args={[0.38, 0.16, 0.72]} />
+            <meshStandardMaterial
+              color={player.carColor || "#F472B6"}
+              metalness={0.45}
+              roughness={0.28}
+            />
+          </mesh>
+          <mesh position={[0, 0.12, -0.04]}>
+            <boxGeometry args={[0.31, 0.12, 0.38]} />
+            <meshStandardMaterial color="#0F172A" metalness={0.85} roughness={0.1} />
+          </mesh>
+        </group>
+      ) : (
+        <group>
+          <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.22, 0.3, 24]} />
+            <meshBasicMaterial color="#FB923C" transparent opacity={0.85} />
+          </mesh>
+          <mesh position={[0, 0.2, 0]}>
+            <boxGeometry args={[0.24, 0.32, 0.14]} />
+            <meshStandardMaterial color={skin.pants} />
+          </mesh>
+          <mesh position={[0, 0.52, 0]}>
+            <boxGeometry args={[0.3, 0.34, 0.17]} />
+            <meshStandardMaterial color={skin.torso} />
+          </mesh>
+          <mesh position={[0, 0.81, 0]}>
+            <boxGeometry args={[0.21, 0.21, 0.21]} />
+            <meshStandardMaterial color="#FDBA74" />
+          </mesh>
+        </group>
+      )}
+
+      <Html position={[0, labelY, 0]} center zIndexRange={[10, 0]}>
+        <div className="pointer-events-none whitespace-nowrap rounded-full border border-orange-400 bg-slate-950/90 px-2 py-0.5 text-[10px] font-black text-orange-200 shadow-lg">
+          {player.name}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+// 7. Kompletní GTA simulace: 5 AI aut + Osobní auto + Vrtulník + Vice Coiny + Postava
 function InteractiveCitySimulation({
   streetMode,
   theme,
   activeDonors,
   playerName,
+  playerSkin,
   playerInputRef,
   castShadow = true,
   onNearbyPlotChange,
-  onPlayerPosChange,
+  onPlayerTransformChange,
   onVehicleStateChange,
   onCoinCollect,
   onPlaySfx,
@@ -596,18 +729,32 @@ function InteractiveCitySimulation({
   const { camera, gl } = useThree();
   const isLit = theme === "night" || theme === "sunset";
   const limit = (COLS * TILE_STEP) / 2;
+  const activeSkin = PLAYER_SKINS[playerSkin] || PLAYER_SKINS.tourist;
 
-  // Refy na 3D skupiny aut a mincí
   const carMeshesRef = useRef([]);
   const carNeonMeshesRef = useRef([]);
   const coinMeshesRef = useRef([]);
 
-  // Stav všech 5 aut na ostrově
+  const heliGroupRef = useRef(null);
+  const mainRotorRef = useRef(null);
+  const tailRotorRef = useRef(null);
+
+  const heliStateRef = useRef({
+    spawned: false,
+    inHeli: false,
+    x: 2.2,
+    y: 0.16,
+    z: 2.2,
+    yaw: 0,
+    vy: 0,
+  });
+
   const carsStateRef = useRef(
     INITIAL_STREET_CARS.map((c) => {
       const startPos = -limit + c.offset;
       return {
         ...c,
+        visible: !c.isPersonal,
         x: c.axis === "x" ? startPos * c.dir : c.lane,
         z: c.axis === "z" ? startPos * c.dir : c.lane,
         yaw:
@@ -619,12 +766,11 @@ function InteractiveCitySimulation({
               ? 0
               : Math.PI,
         speed: 0,
-        hijacked: false,
+        hijacked: Boolean(c.isPersonal),
       };
     })
   );
 
-  // Stav 25 sběratelných Vice Coinů
   const coinsStateRef = useRef(
     COIN_SPOTS.map(([cx, cz], idx) => ({
       id: idx,
@@ -634,7 +780,6 @@ function InteractiveCitySimulation({
     }))
   );
 
-  // Stav hráče (pěšky nebo v autě)
   const playerGroupRef = useRef(null);
   const leftLegRef = useRef(null);
   const rightLegRef = useRef(null);
@@ -648,7 +793,7 @@ function InteractiveCitySimulation({
   const camPitchRef = useRef(0.32);
 
   const inCarIdRef = useRef(null);
-  const nearbyCarIdRef = useRef(null);
+  const nearbyTargetRef = useRef(null); // { type: "car" | "heli", id?: number }
   const lastReportedVehicleRef = useRef("");
 
   const keysRef = useRef({});
@@ -658,7 +803,6 @@ function InteractiveCitySimulation({
   const uiTickRef = useRef(0);
   const hornCooldownRef = useRef(0);
 
-  // Kolizní boxy všech budov
   const buildingColliders = useMemo(() => {
     return activeDonors.map((d) => {
       const { x, z } = plotToWorld(d.plot);
@@ -666,17 +810,34 @@ function InteractiveCitySimulation({
     });
   }, [activeDonors]);
 
-  // Funkce pro nastoupení / vystoupení z auta (volá klávesa E/F i tlačítko v App.jsx)
+  // Nastoupení / vystoupení z auta nebo vrtulníku
   const toggleVehicleAction = useMemo(() => {
     return () => {
       if (!streetMode) return;
+      const heli = heliStateRef.current;
+
+      // Vystoupení z vrtulníku
+      if (heli.inHeli) {
+        heli.inHeli = false;
+        heli.y = 0.16;
+        heli.vy = 0;
+        const exitX = heli.x - Math.cos(heli.yaw) * 0.95;
+        const exitZ = heli.z + Math.sin(heli.yaw) * 0.95;
+        posRef.current.set(
+          Math.max(-22.8, Math.min(22.8, exitX)),
+          0.14,
+          Math.max(-22.8, Math.min(22.8, exitZ))
+        );
+        facingYawRef.current = heli.yaw;
+        onPlaySfx?.("select");
+        return;
+      }
 
       // Vystoupení z auta
       if (inCarIdRef.current !== null) {
         const car = carsStateRef.current.find((c) => c.id === inCarIdRef.current);
         if (car) {
           car.speed = 0;
-          // Hráč vystoupí vlevo vedle dveří řidiče
           const exitX = car.x - Math.cos(car.yaw) * 0.72;
           const exitZ = car.z + Math.sin(car.yaw) * 0.72;
           posRef.current.set(
@@ -691,14 +852,20 @@ function InteractiveCitySimulation({
         return;
       }
 
-      // Nastoupení do nejbližšího auta
-      if (nearbyCarIdRef.current !== null) {
-        const car = carsStateRef.current.find((c) => c.id === nearbyCarIdRef.current);
-        if (car) {
+      // Nastoupení do nejbližšího vozidla
+      const target = nearbyTargetRef.current;
+      if (!target) return;
+
+      if (target.type === "heli" && heli.spawned) {
+        heli.inHeli = true;
+        camYawRef.current = heli.yaw + Math.PI;
+        onPlaySfx?.("build");
+      } else if (target.type === "car") {
+        const car = carsStateRef.current.find((c) => c.id === target.id);
+        if (car && car.visible) {
           car.hijacked = true;
           car.speed = 0;
           inCarIdRef.current = car.id;
-          // Natočíme kameru za záď ukradeného auta
           camYawRef.current = car.yaw + Math.PI;
           onPlaySfx?.("build");
         }
@@ -706,24 +873,70 @@ function InteractiveCitySimulation({
     };
   }, [onPlaySfx, streetMode]);
 
-  // Propojení s tlačítky v App.jsx
+  // Přivolání osobního auta nebo vrtulníku z Garáže
+  const spawnPersonalCar = useMemo(() => {
+    return (colorHex = "#FFFFFF") => {
+      const car = carsStateRef.current.find((c) => c.isPersonal);
+      if (!car) return;
+      heliStateRef.current.inHeli = false;
+      car.visible = true;
+      car.hijacked = true;
+      car.color = colorHex;
+      car.x = posRef.current.x;
+      car.z = posRef.current.z;
+      car.yaw = facingYawRef.current;
+      car.speed = 0;
+      inCarIdRef.current = car.id;
+      camYawRef.current = car.yaw + Math.PI;
+      onPlaySfx?.("build");
+    };
+  }, [onPlaySfx]);
+
+  const spawnHelicopter = useMemo(() => {
+    return () => {
+      inCarIdRef.current = null;
+      const heli = heliStateRef.current;
+      heli.spawned = true;
+      heli.inHeli = true;
+      heli.x = posRef.current.x;
+      heli.y = 1.4;
+      heli.z = posRef.current.z;
+      heli.yaw = facingYawRef.current;
+      heli.vy = 0;
+      camYawRef.current = heli.yaw + Math.PI;
+      onPlaySfx?.("build");
+    };
+  }, [onPlaySfx]);
+
   useEffect(() => {
     if (playerInputRef?.current) {
       playerInputRef.current.toggleVehicle = toggleVehicleAction;
+      playerInputRef.current.spawnPersonalCar = spawnPersonalCar;
+      playerInputRef.current.spawnHelicopter = spawnHelicopter;
     }
-  }, [playerInputRef, toggleVehicleAction]);
+  }, [playerInputRef, spawnHelicopter, spawnPersonalCar, toggleVehicleAction]);
 
-  // Při vypnutí Street Mode automaticky vystoupíme z auta
   useEffect(() => {
-    if (!streetMode && inCarIdRef.current !== null) {
-      const car = carsStateRef.current.find((c) => c.id === inCarIdRef.current);
-      if (car) car.speed = 0;
-      inCarIdRef.current = null;
-      onVehicleStateChange?.({ inCar: false, canEnter: false, carColor: null, speedKmh: 0 });
+    if (!streetMode) {
+      if (inCarIdRef.current !== null) {
+        const car = carsStateRef.current.find((c) => c.id === inCarIdRef.current);
+        if (car) car.speed = 0;
+        inCarIdRef.current = null;
+      }
+      if (heliStateRef.current.inHeli) {
+        heliStateRef.current.inHeli = false;
+        heliStateRef.current.y = 0.16;
+      }
+      onVehicleStateChange?.({
+        mode: "foot",
+        canEnter: null,
+        carColor: null,
+        speedKmh: 0,
+        altitude: 0,
+      });
     }
   }, [onVehicleStateChange, streetMode]);
 
-  // Klávesnice
   useEffect(() => {
     const onKeyDown = (e) => {
       if (
@@ -749,7 +962,6 @@ function InteractiveCitySimulation({
     };
   }, [toggleVehicleAction]);
 
-  // Rozhlížení myší / prstem ve Street Mode
   useEffect(() => {
     if (!streetMode) return;
     const dom = gl.domElement;
@@ -794,6 +1006,7 @@ function InteractiveCitySimulation({
       moveY: 0,
       sprint: false,
       jump: false,
+      descend: false,
       horn: false,
     };
 
@@ -801,14 +1014,18 @@ function InteractiveCitySimulation({
       hornCooldownRef.current -= dt;
     }
 
-    // 1. Pohyb všech 5 aut (AI provoz + auto řízené hráčem)
+    // 1. Pohyb aut
     const cars = carsStateRef.current;
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i];
       const mesh = carMeshesRef.current[i];
 
+      if (mesh) {
+        mesh.visible = c.visible;
+      }
+      if (!c.visible) continue;
+
       if (inCarIdRef.current === c.id && streetMode) {
-        // Auto řízené hráčem
         let throttle = touch.moveY;
         let steer = touch.moveX;
         if (keys["KeyW"] || keys["ArrowUp"]) throttle += 1;
@@ -826,15 +1043,14 @@ function InteractiveCitySimulation({
           onPlaySfx?.("horn");
         }
 
-        const maxForward = 15.5;
+        const maxForward = c.isPersonal ? 18.0 : 15.5;
         const maxReverse = -6.0;
 
         if (throttle > 0.05) {
-          c.speed += throttle * 16.5 * dt;
+          c.speed += throttle * 17.5 * dt;
         } else if (throttle < -0.05) {
           c.speed += throttle * 18.0 * dt;
         } else {
-          // Přirozené brzdění motorem
           c.speed *= Math.pow(0.16, dt);
           if (Math.abs(c.speed) < 0.08) c.speed = 0;
         }
@@ -845,7 +1061,6 @@ function InteractiveCitySimulation({
 
         c.speed = Math.max(maxReverse, Math.min(maxForward, c.speed));
 
-        // Zatáčení (silnější při driftu, obrácené při couvání)
         if (Math.abs(c.speed) > 0.25 && Math.abs(steer) > 0.05) {
           const dirSign = c.speed >= 0 ? 1 : -1;
           const turnRate = isDrifting ? 3.35 : 2.55;
@@ -856,7 +1071,6 @@ function InteractiveCitySimulation({
         c.x += Math.sin(c.yaw) * c.speed * dt;
         c.z += Math.cos(c.yaw) * c.speed * dt;
 
-        // Kolize auta s okrajem ostrova
         const maxCarBound = 22.9;
         if (Math.abs(c.x) > maxCarBound) {
           c.x = Math.sign(c.x) * maxCarBound;
@@ -867,7 +1081,6 @@ function InteractiveCitySimulation({
           c.speed *= 0.5;
         }
 
-        // Kolize auta s centrální fontánou
         const fDist = Math.hypot(c.x, c.z);
         const minFountainCar = 1.48;
         if (fDist < minFountainCar && fDist > 0.001) {
@@ -877,7 +1090,6 @@ function InteractiveCitySimulation({
           c.speed *= 0.65;
         }
 
-        // Kolize auta s 3D budovami dárců
         const carRadius = 0.36;
         for (let bIdx = 0; bIdx < buildingColliders.length; bIdx++) {
           const b = buildingColliders[bIdx];
@@ -896,17 +1108,14 @@ function InteractiveCitySimulation({
           }
         }
 
-        // Neonové podsvícení při driftu
         const neonMesh = carNeonMeshesRef.current[i];
         if (neonMesh) {
-          neonMesh.visible = isDrifting && Math.abs(c.speed) > 2.5;
+          neonMesh.visible = (isDrifting && Math.abs(c.speed) > 2.5) || Boolean(c.isPersonal);
         }
 
-        // Synchronizace pozice hráče s autem
         posRef.current.set(c.x, 0.14, c.z);
         facingYawRef.current = c.yaw;
 
-        // Kamera plynule sleduje auto (pokud hráč zrovna netáhne myší)
         if (!dragRef.current.active && c.speed > 1.2) {
           const targetCamYaw = c.yaw + Math.PI;
           let yawDiff = targetCamYaw - camYawRef.current;
@@ -915,11 +1124,9 @@ function InteractiveCitySimulation({
           camYawRef.current += yawDiff * Math.min(1, dt * 3.2);
         }
       } else if (!c.hijacked) {
-        // AI jízda po hlavním bulváru
         const distToPlayer = streetMode
           ? Math.hypot(c.x - posRef.current.x, c.z - posRef.current.z)
           : 99;
-        // AI auto přibrzdí, když hráč stojí přímo u něj, aby šlo snadno ukrást
         const aiSpeed = distToPlayer < 1.9 ? 0 : c.baseSpeed;
         const span = limit * 2;
 
@@ -944,9 +1151,71 @@ function InteractiveCitySimulation({
       }
     }
 
-    // 2. Rotace a sbírání Vice Coinů
+    // 2. Fyzika vrtulníku (Vice Chopper)
+    const heli = heliStateRef.current;
+    if (heliGroupRef.current) {
+      heliGroupRef.current.visible = heli.spawned;
+      if (heli.spawned) {
+        if (heli.inHeli && streetMode) {
+          let pitch = touch.moveY;
+          let yawInput = touch.moveX;
+          if (keys["KeyW"] || keys["ArrowUp"]) pitch += 1;
+          if (keys["KeyS"] || keys["ArrowDown"]) pitch -= 1;
+          if (keys["KeyD"] || keys["ArrowRight"]) yawInput += 1;
+          if (keys["KeyA"] || keys["ArrowLeft"]) yawInput -= 1;
+
+          const ascend = Boolean(keys["Space"] || touch.jump);
+          const descend = Boolean(
+            keys["ShiftLeft"] || keys["ShiftRight"] || touch.descend
+          );
+
+          if (ascend) {
+            heli.vy = 6.5;
+          } else if (descend) {
+            heli.vy = -6.5;
+          } else {
+            heli.vy *= Math.pow(0.08, dt);
+          }
+
+          heli.y = Math.max(0.16, Math.min(18.0, heli.y + heli.vy * dt));
+          heli.yaw -= yawInput * 2.2 * dt;
+
+          const airSpeed = pitch * 13.5;
+          heli.x += Math.sin(heli.yaw) * airSpeed * dt;
+          heli.z += Math.cos(heli.yaw) * airSpeed * dt;
+
+          const maxHeliBound = 24.5;
+          heli.x = Math.max(-maxHeliBound, Math.min(maxHeliBound, heli.x));
+          heli.z = Math.max(-maxHeliBound, Math.min(maxHeliBound, heli.z));
+
+          posRef.current.set(heli.x, heli.y, heli.z);
+          facingYawRef.current = heli.yaw;
+
+          if (!dragRef.current.active && Math.abs(pitch) > 0.1) {
+            const targetCamYaw = heli.yaw + Math.PI;
+            let yawDiff = targetCamYaw - camYawRef.current;
+            while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+            while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+            camYawRef.current += yawDiff * Math.min(1, dt * 2.8);
+          }
+        }
+
+        heliGroupRef.current.position.set(heli.x, heli.y, heli.z);
+        heliGroupRef.current.rotation.y = heli.yaw;
+
+        const rotorSpeed = heli.inHeli ? 26 : 3;
+        if (mainRotorRef.current) {
+          mainRotorRef.current.rotation.y += rotorSpeed * dt;
+        }
+        if (tailRotorRef.current) {
+          tailRotorRef.current.rotation.x += rotorSpeed * dt;
+        }
+      }
+    }
+
+    // 3. Vice Coiny
     const coins = coinsStateRef.current;
-    const pickupRadius = inCarIdRef.current !== null ? 0.92 : 0.65;
+    const pickupRadius = heli.inHeli ? 1.25 : inCarIdRef.current !== null ? 0.92 : 0.65;
 
     for (let i = 0; i < coins.length; i++) {
       const coin = coins[i];
@@ -970,7 +1239,7 @@ function InteractiveCitySimulation({
         mesh.rotation.y = elapsed * 3.2 + i;
       }
 
-      if (streetMode) {
+      if (streetMode && posRef.current.y < 1.8) {
         const d = Math.hypot(coin.x - posRef.current.x, coin.z - posRef.current.z);
         if (d < pickupRadius) {
           coin.respawnTimer = 11;
@@ -981,17 +1250,19 @@ function InteractiveCitySimulation({
       }
     }
 
-    // 3. Pohyb hráče pěšky + kamera ve Street Mode
+    // 4. Pohyb hráče pěšky + kamera
     if (!streetMode) return;
 
     const pos = posRef.current;
     const isInCar = inCarIdRef.current !== null;
+    const isInHeli = heli.inHeli;
+    const onFoot = !isInCar && !isInHeli;
 
     if (playerGroupRef.current) {
-      playerGroupRef.current.visible = !isInCar;
+      playerGroupRef.current.visible = onFoot;
     }
 
-    if (!isInCar) {
+    if (onFoot) {
       let forward = touch.moveY;
       let strafe = touch.moveX;
       if (keys["KeyW"] || keys["ArrowUp"]) forward += 1;
@@ -1019,7 +1290,6 @@ function InteractiveCitySimulation({
       pos.x += moveWorldX * speed * dt;
       pos.z += moveWorldZ * speed * dt;
 
-      // Skok a gravitace
       const groundY = 0.14;
       const wantsJump = Boolean(keys["Space"] || touch.jump);
       if (wantsJump && pos.y <= groundY + 0.005) {
@@ -1036,12 +1306,10 @@ function InteractiveCitySimulation({
         velYRef.current = 0;
       }
 
-      // Hranice ostrova
       const maxIsland = 23.2;
       pos.x = Math.max(-maxIsland, Math.min(maxIsland, pos.x));
       pos.z = Math.max(-maxIsland, Math.min(maxIsland, pos.z));
 
-      // Kolize s fontánou
       const fountainDist = Math.hypot(pos.x, pos.z);
       const minFountainDist = 1.28;
       if (fountainDist < minFountainDist && fountainDist > 0.001) {
@@ -1050,7 +1318,6 @@ function InteractiveCitySimulation({
         pos.z += pos.z * push;
       }
 
-      // Kolize s budovami
       const playerRadius = 0.22;
       for (let i = 0; i < buildingColliders.length; i++) {
         const b = buildingColliders[i];
@@ -1068,7 +1335,6 @@ function InteractiveCitySimulation({
         }
       }
 
-      // Animace postavy
       const isMoving = inputLen > 0.05;
       if (isMoving) {
         const targetAngle = Math.atan2(moveWorldX, moveWorldZ);
@@ -1092,26 +1358,37 @@ function InteractiveCitySimulation({
         playerGroupRef.current.rotation.y = facingYawRef.current;
       }
 
-      // Kontrola nejbližšího auta pro nastoupení
-      let closestId = null;
+      // Kontrola nejbližšího auta nebo vrtulníku
+      let closestTarget = null;
       let closestDist = 1.95;
+
+      if (heli.spawned) {
+        const dHeli = Math.hypot(heli.x - pos.x, heli.z - pos.z);
+        if (dHeli < closestDist) {
+          closestDist = dHeli;
+          closestTarget = { type: "heli" };
+        }
+      }
+
       for (let i = 0; i < cars.length; i++) {
+        if (!cars[i].visible) continue;
         const d = Math.hypot(cars[i].x - pos.x, cars[i].z - pos.z);
         if (d < closestDist) {
           closestDist = d;
-          closestId = cars[i].id;
+          closestTarget = { type: "car", id: cars[i].id };
         }
       }
-      nearbyCarIdRef.current = closestId;
+      nearbyTargetRef.current = closestTarget;
     }
 
-    // Kamera z pohledu 3. osoby (o kousek dál, když sedíš v autě)
+    // Kamera z pohledu 3. osoby
     const activeCar = isInCar
       ? cars.find((c) => c.id === inCarIdRef.current)
       : null;
     const speedBoostDist = activeCar ? Math.abs(activeCar.speed) * 0.08 : 0;
-    const camDist = (isInCar ? 5.1 : 4.4) + speedBoostDist;
-    const camHeight = (isInCar ? 1.85 : 1.65) + Math.sin(camPitchRef.current) * 2.5;
+    const camDist = (isInHeli ? 6.2 : isInCar ? 5.1 : 4.4) + speedBoostDist;
+    const camHeight =
+      (isInHeli ? 2.2 : isInCar ? 1.85 : 1.65) + Math.sin(camPitchRef.current) * 2.5;
     const horizDist = Math.cos(camPitchRef.current) * camDist;
 
     const desiredCamPos = new THREE.Vector3(
@@ -1120,10 +1397,10 @@ function InteractiveCitySimulation({
       pos.z + Math.cos(camYawRef.current) * horizDist
     );
     camera.position.lerp(desiredCamPos, Math.min(1, dt * 12));
-    camera.lookAt(pos.x, pos.y + (isInCar ? 0.55 : 0.72), pos.z);
+    camera.lookAt(pos.x, pos.y + (isInHeli ? 0.35 : isInCar ? 0.55 : 0.72), pos.z);
 
-    // Detekce parcely před hráčem/autem
-    const probeDist = isInCar ? 1.3 : 0.85;
+    // Detekce parcely pod/před hráčem
+    const probeDist = isInHeli ? 0 : isInCar ? 1.3 : 0.85;
     const probeX = pos.x + Math.sin(facingYawRef.current) * probeDist;
     const probeZ = pos.z + Math.cos(facingYawRef.current) * probeDist;
     const nearbyPlot = worldToPlot(probeX, probeZ);
@@ -1132,26 +1409,38 @@ function InteractiveCitySimulation({
       onNearbyPlotChange(nearbyPlot);
     }
 
-    // Aktualizace UI radaru a stavu vozidla (~10x za sekundu)
+    // Aktualizace UI a multiplayer pozice (~10x za sekundu)
     uiTickRef.current += dt;
     if (uiTickRef.current >= 0.1) {
       uiTickRef.current = 0;
-      onPlayerPosChange({ x: pos.x, z: pos.z });
+      const mode = isInHeli ? "heli" : isInCar ? "car" : "foot";
 
-      const nearCar =
-        nearbyCarIdRef.current !== null
-          ? cars.find((c) => c.id === nearbyCarIdRef.current)
-          : null;
-      const speedKmh = activeCar ? Math.round(Math.abs(activeCar.speed) * 9.5) : 0;
-      const signature = `${isInCar}-${nearCar?.id ?? "none"}-${speedKmh}`;
+      onPlayerTransformChange?.({
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        yaw: facingYawRef.current,
+        vehicleMode: mode,
+        carColor: activeCar?.color || "#FFFFFF",
+      });
+
+      const speedKmh = isInHeli
+        ? Math.round(Math.hypot(heli.vy, 8) * 11)
+        : activeCar
+          ? Math.round(Math.abs(activeCar.speed) * 9.5)
+          : 0;
+      const altitude = isInHeli ? Math.max(0, Math.round((heli.y - 0.16) * 8)) : 0;
+      const canEnterType = onFoot ? nearbyTargetRef.current?.type || null : null;
+      const signature = `${mode}-${canEnterType}-${speedKmh}-${altitude}`;
 
       if (signature !== lastReportedVehicleRef.current) {
         lastReportedVehicleRef.current = signature;
         onVehicleStateChange?.({
-          inCar: isInCar,
-          canEnter: !isInCar && nearCar !== null,
-          carColor: activeCar?.color || nearCar?.color || null,
+          mode,
+          canEnter: canEnterType,
+          carColor: activeCar?.color || null,
           speedKmh,
+          altitude,
         });
       }
     }
@@ -1159,7 +1448,7 @@ function InteractiveCitySimulation({
 
   return (
     <group>
-      {/* 5 kraditelných 3D aut na ulicích */}
+      {/* 5 AI aut + 1 osobní sporťák */}
       {INITIAL_STREET_CARS.map((c, idx) => (
         <group
           key={c.id}
@@ -1167,29 +1456,24 @@ function InteractiveCitySimulation({
             carMeshesRef.current[idx] = el;
           }}
         >
-          {/* Karoserie */}
           <mesh castShadow={castShadow}>
             <boxGeometry args={[0.38, 0.16, 0.72]} />
             <meshStandardMaterial color={c.color} metalness={0.45} roughness={0.28} />
           </mesh>
-          {/* Kabina */}
           <mesh position={[0, 0.12, -0.04]}>
             <boxGeometry args={[0.31, 0.12, 0.38]} />
             <meshStandardMaterial color="#0F172A" metalness={0.85} roughness={0.1} />
           </mesh>
-          {/* Zadní neonový spoiler */}
           <mesh position={[0, 0.12, -0.34]}>
             <boxGeometry args={[0.38, 0.04, 0.06]} />
             <meshStandardMaterial color={c.color} emissive={c.color} emissiveIntensity={0.6} />
           </mesh>
-          {/* Přední světla v noci/západu slunce */}
           {isLit && (
             <mesh position={[0, -0.02, 0.65]} rotation={[-Math.PI / 2, 0, 0]}>
               <planeGeometry args={[0.48, 0.85]} />
               <meshBasicMaterial color="#FEF08A" transparent opacity={0.36} />
             </mesh>
           )}
-          {/* Drift neon pod podvozkem */}
           <mesh
             ref={(el) => {
               carNeonMeshesRef.current[idx] = el;
@@ -1204,7 +1488,35 @@ function InteractiveCitySimulation({
         </group>
       ))}
 
-      {/* 25 rotujících Vice Coinů po městě */}
+      {/* Osobní 3D vrtulník (Vice Chopper) */}
+      <group ref={heliGroupRef} visible={false} position={[2.2, 0.16, 2.2]}>
+        <mesh castShadow={castShadow}>
+          <boxGeometry args={[0.48, 0.34, 0.92]} />
+          <meshStandardMaterial color="#EC4899" metalness={0.65} roughness={0.2} />
+        </mesh>
+        <mesh position={[0, 0.04, 0.36]}>
+          <boxGeometry args={[0.44, 0.26, 0.32]} />
+          <meshStandardMaterial color="#22D3EE" metalness={0.9} roughness={0.1} />
+        </mesh>
+        <mesh position={[0, 0.04, -0.78]}>
+          <boxGeometry args={[0.12, 0.14, 0.72]} />
+          <meshStandardMaterial color="#1E1B4B" />
+        </mesh>
+        <mesh position={[0, 0.21, 0]}>
+          <cylinderGeometry args={[0.05, 0.05, 0.12, 8]} />
+          <meshStandardMaterial color="#CBD5E1" />
+        </mesh>
+        <mesh ref={mainRotorRef} position={[0, 0.27, 0]}>
+          <boxGeometry args={[1.72, 0.02, 0.11]} />
+          <meshBasicMaterial color="#22D3EE" />
+        </mesh>
+        <mesh ref={tailRotorRef} position={[0.09, 0.08, -1.1]}>
+          <boxGeometry args={[0.02, 0.34, 0.06]} />
+          <meshBasicMaterial color="#FBBF24" />
+        </mesh>
+      </group>
+
+      {/* 25 rotujících Vice Coinů */}
       {COIN_SPOTS.map((_, idx) => (
         <mesh
           key={idx}
@@ -1224,7 +1536,7 @@ function InteractiveCitySimulation({
         </mesh>
       ))}
 
-      {/* Hratelná 3D postava (zobrazí se v Street Mode mimo auto) */}
+      {/* Hratelná 3D postava s vybraným skinem */}
       {streetMode && (
         <group ref={playerGroupRef} position={[0, 0.14, 3.6]}>
           <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -1235,32 +1547,32 @@ function InteractiveCitySimulation({
           <group ref={leftLegRef} position={[-0.085, 0.34, 0]}>
             <mesh position={[0, -0.15, 0]} castShadow={castShadow}>
               <boxGeometry args={[0.11, 0.28, 0.12]} />
-              <meshStandardMaterial color="#1D4ED8" roughness={0.8} />
+              <meshStandardMaterial color={activeSkin.pants} roughness={0.8} />
             </mesh>
             <mesh position={[0, -0.31, 0.02]}>
               <boxGeometry args={[0.115, 0.07, 0.16]} />
-              <meshStandardMaterial color="#F8FAFC" roughness={0.4} />
+              <meshStandardMaterial color={activeSkin.shoes} roughness={0.4} />
             </mesh>
           </group>
 
           <group ref={rightLegRef} position={[0.085, 0.34, 0]}>
             <mesh position={[0, -0.15, 0]} castShadow={castShadow}>
               <boxGeometry args={[0.11, 0.28, 0.12]} />
-              <meshStandardMaterial color="#1D4ED8" roughness={0.8} />
+              <meshStandardMaterial color={activeSkin.pants} roughness={0.8} />
             </mesh>
             <mesh position={[0, -0.31, 0.02]}>
               <boxGeometry args={[0.115, 0.07, 0.16]} />
-              <meshStandardMaterial color="#F8FAFC" roughness={0.4} />
+              <meshStandardMaterial color={activeSkin.shoes} roughness={0.4} />
             </mesh>
           </group>
 
           <mesh position={[0, 0.52, 0]} castShadow={castShadow}>
             <boxGeometry args={[0.3, 0.34, 0.17]} />
-            <meshStandardMaterial color="#06B6D4" roughness={0.55} />
+            <meshStandardMaterial color={activeSkin.torso} roughness={0.55} />
           </mesh>
           <mesh position={[0, 0.52, 0.088]}>
             <boxGeometry args={[0.24, 0.22, 0.01]} />
-            <meshStandardMaterial color="#F472B6" roughness={0.5} />
+            <meshStandardMaterial color={activeSkin.accent} roughness={0.5} />
           </mesh>
 
           <group ref={leftArmRef} position={[-0.2, 0.65, 0]}>
@@ -1284,7 +1596,7 @@ function InteractiveCitySimulation({
             </mesh>
             <mesh position={[0, 0.09, -0.01]}>
               <boxGeometry args={[0.225, 0.08, 0.225]} />
-              <meshStandardMaterial color="#1E1B4B" roughness={0.8} />
+              <meshStandardMaterial color={activeSkin.hair} roughness={0.8} />
             </mesh>
             <mesh position={[0, 0.02, 0.11]}>
               <boxGeometry args={[0.19, 0.055, 0.02]} />
@@ -1316,10 +1628,12 @@ export default function Island3D({
   focusSignal,
   resetSignal,
   streetMode = false,
+  playerSkin = "tourist",
+  remotePlayers = [],
   playerInputRef,
   onSelectPlot,
   onHoverPlot,
-  onPlayerPosChange,
+  onPlayerTransformChange,
   onVehicleStateChange,
   onCoinCollect,
   onPlaySfx,
@@ -1459,22 +1773,27 @@ export default function Island3D({
 
       <PalmTrees3D castShadow={!isMobile} />
       <StaticWorldEnvironment
-        theme={theme}
         roadTex={textures.road}
         plazaTex={textures.plaza}
         waterTex={textures.water}
         castShadow={!isMobile}
       />
 
+      {/* Ostatní online hráči v 3D */}
+      {remotePlayers.map((rp) => (
+        <RemotePlayerEntity key={rp.id} player={rp} />
+      ))}
+
       <InteractiveCitySimulation
         streetMode={streetMode}
         theme={theme}
         activeDonors={activeDonors}
         playerName={previewName.trim() ? formattedHandle : "@visitor"}
+        playerSkin={playerSkin}
         playerInputRef={playerInputRef}
         castShadow={!isMobile}
         onNearbyPlotChange={onSelectPlot}
-        onPlayerPosChange={onPlayerPosChange}
+        onPlayerTransformChange={onPlayerTransformChange}
         onVehicleStateChange={onVehicleStateChange}
         onCoinCollect={onCoinCollect}
         onPlaySfx={onPlaySfx}
