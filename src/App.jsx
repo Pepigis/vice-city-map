@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowUp,
   Award,
+  Car,
   Check,
+  Coins,
   Copy,
   Crown,
   DollarSign,
@@ -14,6 +16,7 @@ import {
   Gamepad2,
   HelpCircle,
   Loader2,
+  LogOut,
   Map as MapIcon,
   MapPin,
   Moon,
@@ -34,10 +37,8 @@ import {
 } from "lucide-react";
 import Island3D from "./Island3D";
 
-// Volitelná záložní/ruční data (živí dárci se načítají automaticky ze Supabase)
 const FALLBACK_DONORS = [];
 
-// Demo data pro natáčení ukázek do videa (aktivuje se přes /?demo=1)
 const DEMO_DONORS = [
   { plot: 1, name: "@vice_mayor", amount: 10, message: "Claimed #0001! Let's get that Xbox!" },
   { plot: 2, name: "@alex_codes", amount: 5, message: "Respect for hand-coding in 3D" },
@@ -311,7 +312,7 @@ function generateDeedCardDataUrl({
   return canvas.toDataURL("image/png");
 }
 
-// Dotykový virtuální joystick pro ovládání postavy na mobilu
+// Dotykový joystick pro chůzi i řízení auta na mobilu
 function TouchJoystick({ onMove }) {
   const baseRef = useRef(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
@@ -391,6 +392,8 @@ export default function App() {
     moveY: 0,
     sprint: false,
     jump: false,
+    horn: false,
+    toggleVehicle: null,
   });
 
   const [theme, setTheme] = useState("night");
@@ -400,6 +403,13 @@ export default function App() {
   );
   const [playerPos, setPlayerPos] = useState({ x: 0, z: 3.6 });
   const [touchSprint, setTouchSprint] = useState(false);
+  const [viceCoins, setViceCoins] = useState(0);
+  const [vehicleState, setVehicleState] = useState({
+    inCar: false,
+    canEnter: false,
+    carColor: null,
+    speedKmh: 0,
+  });
 
   const [demoMode, setDemoMode] = useState(
     () => new URLSearchParams(window.location.search).get("demo") === "1"
@@ -466,6 +476,22 @@ export default function App() {
           gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
           osc.start(now);
           osc.stop(now + 0.19);
+        } else if (type === "coin") {
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(987.77, now);
+          osc.frequency.setValueAtTime(1318.51, now + 0.06);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+          osc.start(now);
+          osc.stop(now + 0.19);
+        } else if (type === "horn") {
+          osc.type = "sawtooth";
+          osc.frequency.setValueAtTime(320, now);
+          osc.frequency.setValueAtTime(400, now + 0.08);
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+          osc.start(now);
+          osc.stop(now + 0.25);
         } else if (type === "theme") {
           osc.type = "sine";
           osc.frequency.setValueAtTime(280, now);
@@ -502,7 +528,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [playSfx]);
 
-  // Načítání živých dárců ze Supabase + automatická kontrola nových staveb každých 30 s
+  // Načítání živých dárců ze Supabase
   useEffect(() => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       setLoadingDonors(false);
@@ -681,7 +707,6 @@ export default function App() {
   const selectedRow = Math.floor((selectedPlot - 1) / COLS);
   const selectedCol = (selectedPlot - 1) % COLS;
 
-  // Souřadnice hráče pro tečku na mini-radaru
   const playerRadarCol = Math.max(
     0,
     Math.min(COLS, playerPos.x / TILE_STEP + COLS / 2)
@@ -766,9 +791,12 @@ export default function App() {
     focusPlot(row * COLS + col + 1);
   };
 
+  const handleCoinCollect = useCallback(() => {
+    setViceCoins((c) => c + 1);
+  }, []);
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-white select-none font-sans">
-      {/* Plně 3D WebGL ostrov + hratelná postava */}
       <Island3D
         activeDonors={activeDonors}
         donorMap={donorMap}
@@ -789,9 +817,11 @@ export default function App() {
         }}
         onHoverPlot={setHoveredPlot}
         onPlayerPosChange={setPlayerPos}
+        onVehicleStateChange={setVehicleState}
+        onCoinCollect={handleCoinCollect}
+        onPlaySfx={playSfx}
       />
 
-      {/* Plovoucí tlačítko pro návrat UI při skrytém HUD (?clean=1 nebo klávesa H) */}
       {hudHidden && (
         <button
           onClick={() => setHudHidden(false)}
@@ -805,7 +835,7 @@ export default function App() {
 
       {!hudHidden && (
         <>
-          {/* Horní lišta s pokrokem a ovládáním */}
+          {/* Horní lišta */}
           <header className="pointer-events-none absolute top-0 left-0 right-0 z-10 flex flex-wrap items-center justify-between gap-2 p-3 sm:p-4">
             <div className="pointer-events-auto flex items-center gap-2.5 rounded-2xl border border-cyan-400/30 bg-slate-900/90 px-3 py-2 shadow-2xl backdrop-blur-md">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-400 font-black text-slate-950 shadow-lg">
@@ -822,12 +852,13 @@ export default function App() {
                 </div>
                 <p className="hidden text-[11px] text-slate-400 md:block">
                   {streetMode
-                    ? "WASD to walk • Shift sprint • Space jump • Drag to look"
+                    ? vehicleState.inCar
+                      ? "WASD drive • Space drift • Shift horn • E/F exit car"
+                      : "WASD walk • Shift sprint • Space jump • E/F steal car"
                     : "Drag to orbit 360° • Scroll to zoom • Click any plot"}
                 </p>
               </div>
 
-              {/* Hlavní přepínač: Street Mode (3D postava) vs Map View */}
               <button
                 onClick={() => {
                   playSfx("theme");
@@ -906,8 +937,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* Vyhledávání + přepínače */}
+            {/* Pravá horní tlačítka + počítadlo Vice Coinů */}
             <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
+              {streetMode && (
+                <div className="flex items-center gap-1.5 rounded-xl border border-amber-400/50 bg-slate-900/90 px-3 py-1.5 text-xs font-black text-amber-300 shadow-lg backdrop-blur-md">
+                  <Coins className="h-4 w-4 text-amber-400" />
+                  <span>{viceCoins}</span>
+                </div>
+              )}
+
               {!streetMode && (
                 <form
                   onSubmit={handleSearch}
@@ -994,6 +1032,35 @@ export default function App() {
             </div>
           </header>
 
+          {/* Plovoucí akční výzva uprostřed pro nastoupení / vystoupení z auta */}
+          {streetMode && (vehicleState.canEnter || vehicleState.inCar) && (
+            <div className="pointer-events-none fixed top-20 left-1/2 z-20 -translate-x-1/2">
+              {vehicleState.canEnter ? (
+                <button
+                  onClick={() => playerInputRef.current.toggleVehicle?.()}
+                  className="pointer-events-auto flex items-center gap-2 rounded-full border-2 border-amber-300 bg-slate-950/95 px-4 py-2 text-xs font-black text-amber-200 shadow-[0_0_25px_rgba(251,191,36,0.45)] hover:scale-105 transition"
+                >
+                  <Car className="h-4 w-4 text-amber-400" />
+                  <span>STEAL CAR (Press E / F)</span>
+                </button>
+              ) : (
+                <div className="pointer-events-auto flex items-center gap-2.5 rounded-full border border-cyan-400/60 bg-slate-950/90 px-4 py-1.5 text-xs font-black text-white shadow-xl backdrop-blur-md">
+                  <span className="font-mono text-cyan-300">
+                    {vehicleState.speedKmh} KM/H
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <button
+                    onClick={() => playerInputRef.current.toggleVehicle?.()}
+                    className="flex items-center gap-1 text-pink-400 hover:text-pink-300"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    <span>Exit Car (E / F)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Banner pro prvního dárce NEBO živý banner posledního dárce (jen v Map View) */}
           {!streetMode &&
             (!demoMode && !loadingDonors && totalRaised === 0 ? (
@@ -1030,7 +1097,7 @@ export default function App() {
               )
             ))}
 
-          {/* Pravý HUD sloupec: GTA Radar (se živou polohou postavy) + Top 5 stavitelů */}
+          {/* Pravý HUD sloupec: GTA Radar + Top 5 stavitelů */}
           <div className="pointer-events-none absolute top-24 right-3 sm:right-4 z-10 flex flex-col items-end gap-2.5">
             <div
               onClick={handleRadarClick}
@@ -1059,13 +1126,12 @@ export default function App() {
                   stroke="#FFFFFF"
                   strokeWidth="0.8"
                 />
-                {/* Živá ikona hráče na mini-mapě */}
                 {streetMode && (
                   <circle
                     cx={playerRadarCol}
                     cy={playerRadarRow}
-                    r="1.7"
-                    fill="#22D3EE"
+                    r="1.8"
+                    fill={vehicleState.inCar ? "#F472B6" : "#22D3EE"}
                     stroke="#FFFFFF"
                     strokeWidth="0.7"
                   />
@@ -1073,7 +1139,7 @@ export default function App() {
               </svg>
               <div className="pointer-events-none absolute bottom-1 left-1.5 flex items-center gap-0.5 rounded bg-slate-950/80 px-1 text-[9px] font-black tracking-wider text-cyan-300">
                 <Navigation className="h-2.5 w-2.5" />{" "}
-                {streetMode ? "YOU" : "3D RADAR"}
+                {streetMode ? (vehicleState.inCar ? "CAR" : "YOU") : "3D RADAR"}
               </div>
             </div>
 
@@ -1113,10 +1179,9 @@ export default function App() {
             )}
           </div>
 
-          {/* Ovládání pro mobil + kompaktní skener parcely ve Street Mode */}
+          {/* Mobilní ovládání + spodní skener parcely ve Street Mode */}
           {streetMode ? (
             <>
-              {/* Dotykový joystick vlevo dole (zobrazí se na telefonech/tabletech) */}
               <div className="pointer-events-auto fixed bottom-28 left-4 z-20 md:hidden">
                 <TouchJoystick
                   onMove={(mx, my) => {
@@ -1126,17 +1191,34 @@ export default function App() {
                 />
               </div>
 
-              {/* Tlačítka Skok + Sprint vpravo dole (pro telefony/tablety) */}
               <div className="pointer-events-auto fixed bottom-28 right-4 z-20 flex flex-col gap-2.5 md:hidden">
+                {(vehicleState.canEnter || vehicleState.inCar) && (
+                  <button
+                    onClick={() => playerInputRef.current.toggleVehicle?.()}
+                    className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-amber-300 bg-slate-950/90 text-amber-300 shadow-xl active:scale-95 touch-none"
+                  >
+                    {vehicleState.inCar ? (
+                      <LogOut className="h-6 w-6" />
+                    ) : (
+                      <Car className="h-6 w-6" />
+                    )}
+                  </button>
+                )}
+
                 <button
                   onTouchStart={(e) => {
                     e.stopPropagation();
                     playerInputRef.current.jump = true;
                   }}
+                  onTouchEnd={(e) => {
+                    e.stopPropagation();
+                    playerInputRef.current.jump = false;
+                  }}
                   className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-400 bg-slate-950/85 text-emerald-300 shadow-xl active:scale-95 touch-none"
                 >
                   <ArrowUp className="h-6 w-6" />
                 </button>
+
                 <button
                   onClick={() => {
                     const next = !touchSprint;
@@ -1153,7 +1235,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Kompaktní lišta parcely před hráčem */}
               <div className="pointer-events-none fixed bottom-3 left-3 right-3 z-10 flex justify-center">
                 <div className="pointer-events-auto flex w-full max-w-lg items-center justify-between gap-2 rounded-2xl border border-cyan-400/40 bg-slate-900/92 px-3.5 py-2.5 shadow-2xl backdrop-blur-md">
                   <div className="min-w-0">
@@ -1168,7 +1249,7 @@ export default function App() {
                     <div className="mt-0.5 truncate text-xs font-extrabold text-white">
                       {selectedDonor
                         ? `${selectedDonor.name} • $${selectedDonor.amount}`
-                        : "Open Plot — Walk up & claim!"}
+                        : "Open Plot — Drive up & claim!"}
                     </div>
                   </div>
 
@@ -1194,7 +1275,6 @@ export default function App() {
               </div>
             </>
           ) : (
-            /* Spodní karta vybrané parcely + patička v Map View */
             <div className="pointer-events-none absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-10 flex flex-col items-start justify-between gap-2.5 sm:flex-row sm:items-end">
               <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 sm:p-4 shadow-2xl backdrop-blur-md">
                 <div className="flex items-center justify-between gap-1.5">
@@ -1322,7 +1402,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Patička vpravo dole: Legenda + How it Works & Terms */}
               <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end">
                 <div className="hidden items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-2.5 text-xs text-slate-300 backdrop-blur-md lg:flex">
                   <span className="flex items-center gap-1.5">
